@@ -1,2 +1,5 @@
-# istanbul-autonomous-journey-assistant
-Probabilistic &amp; logic-based autonomous travel assistant for Istanbul, powered by IBB/TÜİK live data
+# Istanbul Autonomous Journey Assistant
+
+COE017 — Principles of AI · Final Project
+
+> TODO — Project Manager: proje özeti, takım listesi (8–10 üye, ad + rol), nasıl çalıştırılır talimatı, demo + video link bölümü.

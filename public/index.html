@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <title>Istanbul Autonomous Journey Assistant</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Outfit:wght@300;400;600&display=swap"
+        rel="stylesheet">
+</head>
+
+<body>
+    <div class="app-container">
+        <main class="map-view">
+            <div class="map-overlay top-bar">
+                <div class="search-pill">
+                    <div class="pill-modes">
+                        <div class="pill-mode active" data-mode="best" title="Best"><i
+                                class="fa-solid fa-wand-magic-sparkles"></i></div>
+                        <div class="pill-mode" data-mode="car" title="Car"><i class="fa-solid fa-car"></i></div>
+                        <div class="pill-mode" data-mode="transit" title="Public Transit"><i
+                                class="fa-solid fa-train-subway"></i></div>
+                        <div class="pill-mode" data-mode="walk" title="Walking"><i
+                                class="fa-solid fa-person-walking"></i></div>
+                    </div>
+                    <div class="search-main">
+                        <i class="fa-solid fa-location-dot pill-icon"></i>
+                        <input type="text" placeholder="Where would you like to go?" id="destination-input"
+                            autocomplete="off">
+                        <button id="search-btn" class="pill-btn">Analyze Route</button>
+                    </div>
+                    <div id="suggestions" class="suggestions-list"></div>
+                </div>
+            </div>
+
+            <div id="map"></div>
+
+            <div class="map-overlay bottom-info">
+                <div class="status-badge">
+                    <span class="pulse-red"></span> Live Traffic: Heavy
+                </div>
+                <button id="locate-btn" class="floating-btn" title="Find My Location">
+                    <i class="fa-solid fa-location-crosshairs"></i>
+                </button>
+            </div>
+        </main>
+
+        <aside class="side-panel">
+            <header class="ai-header-main">
+                <div class="ai-logo"><i class="fa-solid fa-robot"></i></div>
+                <div class="ai-title">
+                    <h2>AI Journey Assistant</h2>
+                    <p>Autonomous Decision Support</p>
+                </div>
+            </header>
+
+            <section class="ai-reasoning card">
+                <div class="ai-header">
+                    <i class="fa-solid fa-brain"></i>
+                    <span>AI Decision Logic</span>
+                </div>
+                <div id="ai-status" class="status-text">Waiting for destination...</div>
+            </section>
+
+            <section class="stats-grid">
+                <div class="stat-card card">
+                    <span class="stat-label">Delay Probability</span>
+                    <div class="progress-container">
+                        <div class="progress-bar" id="delay-bar" style="width: 0%"></div>
+                    </div>
+                    <span class="stat-value" id="delay-val">0%</span>
+                </div>
+                <div class="stat-card card">
+                    <span class="stat-label">AI Confidence Score</span>
+                    <div class="stars" id="confidence-stars">
+                        <i class="fa-regular fa-star"></i>
+                        <i class="fa-regular fa-star"></i>
+                        <i class="fa-regular fa-star"></i>
+                        <i class="fa-regular fa-star"></i>
+                        <i class="fa-regular fa-star"></i>
+                    </div>
+                    <span class="stat-value" id="confidence-val">0%</span>
+                </div>
+            </section>
+
+            <section class="route-options">
+                <h3>Suggested Routes</h3>
+                <div id="routes-list"></div>
+            </section>
+
+            <footer class="ai-footer">
+                <p>© 2026 Istanbul Autonomous Systems Project</p>
+            </footer>
+        </aside>
+    </div>
+    <script src="../src/math/math_model.js"></script>
+    <script src="../src/decision/agent.js"></script>
+</body>
+
+</html>
