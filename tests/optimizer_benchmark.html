@@ -1,7 +1,227 @@
 <!DOCTYPE html>
 <html lang="tr">
-<head><meta charset="UTF-8"><title>Optimizer Benchmark — TODO</title></head>
+<head>
+    <meta charset="UTF-8">
+    <title>Optimizer Benchmark</title>
+    <style>
+        body { font-family: -apple-system, "Segoe UI", sans-serif; background: #0E1117; color: #E6EDF3; margin: 0; padding: 24px; }
+        h1 { font-size: 1.4rem; margin: 0 0 4px; }
+        .sub { color: #8B949E; font-size: 0.85rem; margin-bottom: 20px; }
+        .panel { background: #161B22; padding: 14px 18px; border-radius: 10px; border: 1px solid #30363D; margin-bottom: 16px; }
+        .panel h2 { font-size: 0.95rem; margin: 0 0 8px; color: #64FFDA; }
+        .panel p, .panel li { font-size: 0.82rem; color: #C9D1D9; line-height: 1.5; }
+        .panel code, code { color: #FFD700; font-family: ui-monospace, "Cascadia Code", monospace; font-size: 0.78rem; }
+        .controls { display: flex; gap: 10px; margin-bottom: 16px; align-items: center; }
+        button { background: #238636; color: #fff; border: 0; padding: 8px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.85rem; }
+        button:hover { background: #2EA043; }
+        input[type=number] { background: #0E1117; color: #E6EDF3; border: 1px solid #30363D; padding: 6px 10px; border-radius: 6px; width: 80px; font-size: 0.85rem; }
+        label { font-size: 0.85rem; color: #8B949E; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin-top: 10px; }
+        th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #21262D; }
+        th { color: #8B949E; font-weight: 600; text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.5px; }
+        td.num { font-family: ui-monospace, monospace; color: #64FFDA; text-align: right; }
+        tr.winner td { background: #11221A; }
+        .warn { color: #FFA500; font-weight: 600; }
+        .err  { color: #FF4D4D; font-weight: 600; }
+        .ok   { color: #2ECC71; font-weight: 600; }
+    </style>
+</head>
 <body>
-<!-- TODO — Evaluation Specialist: SA/GA vs greedy benchmark; sonuçları tablo + grafik olarak yazdır. -->
+    <h1>Optimizer Benchmark</h1>
+    <div class="sub">COE017 · compares registered optimizers against the greedy baseline on synthetic Istanbul scenarios.</div>
+
+    <div class="panel">
+        <h2>How to plug in your optimizer</h2>
+        <p>Bu benchmark <code>window.Optimizers</code> üzerinden çalışır. Optimization Specialist
+           kendi modülünü yazınca aşağıdaki sözleşmeyi sağlamalı:</p>
+        <pre style="background:#0E1117;padding:10px;border-radius:6px;overflow-x:auto;font-size:0.78rem;color:#C9D1D9;">window.Optimizers = window.Optimizers || {};
+window.Optimizers.simulatedAnnealing = function (scenario) {
+    // scenario = { baseTimeMin, candidateFactorSets: string[][] }
+    // return { chosenFactorSet: string[], iterations: number }
+};</pre>
+        <p>Greedy baseline (her senaryoda en düşük anlık E[D]'yi seçer) <strong>bu sayfada gömülü</strong>
+           çünkü subject PDF benchmark için bir referans noktası gerektiriyor.
+           Gerçek Hill Climbing / SA / GA / MCTS implementasyonu
+           <code>src/optimization/</code> altına ayrı dosya olarak gelecek.</p>
+    </div>
+
+    <div class="controls">
+        <label>Senaryo sayısı: <input type="number" id="n-scenarios" value="50" min="5" max="500"></label>
+        <label>λ (norm cezası): <input type="number" id="lambda" value="2.0" step="0.1" min="0"></label>
+        <button id="run-btn">Run benchmark</button>
+        <span id="status" class="sub"></span>
+    </div>
+
+    <div id="results"></div>
+
+    <script src="../src/math/math_model.js"></script>
+    <script>
+    (function () {
+        'use strict';
+
+        // ── Reference greedy baseline (always available) ───────────────
+        // Picks the candidate factor set that minimises raw E[D].
+        // This is intentionally dumb — it is the "do-nothing-clever" anchor.
+        function greedyBaseline(scenario) {
+            let best = null;
+            let bestCost = Infinity;
+            scenario.candidateFactorSets.forEach((set, i) => {
+                const e = MathModel.expectedDelay(scenario.baseTimeMin, set).E;
+                if (e < bestCost) { bestCost = e; best = set; }
+            });
+            return { chosenFactorSet: best, iterations: scenario.candidateFactorSets.length };
+        }
+
+        // ── Cost function (single source of truth) ─────────────────────
+        // cost = E[D] + λ · ‖x‖₂   (delay minutes + risk magnitude penalty)
+        function costOf(scenario, factorSet, lambda) {
+            const e = MathModel.expectedDelay(scenario.baseTimeMin, factorSet).E;
+            const norm = MathModel.l2Norm(MathModel.buildFeatureVector(factorSet));
+            return e + lambda * norm;
+        }
+
+        // ── Synthetic scenario generator ───────────────────────────────
+        // Each scenario gives the optimizer a small menu of candidate routes
+        // (each route = a subset of active delay factors). The optimizer must
+        // pick the cheapest one under the cost function.
+        const ALL_FACTORS = ['accident', 'rain', 'roadwork', 'breakdown',
+                             'peakHour', 'intercontinental', 'westSide', 'longRoute', 'normal'];
+
+        function randomFactorSubset(rng) {
+            const n = 1 + Math.floor(rng() * 4);
+            const pool = ALL_FACTORS.slice();
+            const out = [];
+            for (let i = 0; i < n && pool.length; i++) {
+                const idx = Math.floor(rng() * pool.length);
+                out.push(pool.splice(idx, 1)[0]);
+            }
+            return out;
+        }
+
+        function generateScenario(rng) {
+            const baseTimeMin = 20 + Math.floor(rng() * 60); // 20–80 min
+            const k = 3 + Math.floor(rng() * 4);             // 3–6 candidates
+            const candidateFactorSets = [];
+            for (let i = 0; i < k; i++) candidateFactorSets.push(randomFactorSubset(rng));
+            return { baseTimeMin, candidateFactorSets };
+        }
+
+        // Deterministic PRNG (mulberry32) so benchmark is reproducible.
+        function seeded(seed) {
+            return function () {
+                seed = (seed + 0x6D2B79F5) | 0;
+                let t = seed;
+                t = Math.imul(t ^ (t >>> 15), t | 1);
+                t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+                return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+            };
+        }
+
+        // ── Benchmark runner ───────────────────────────────────────────
+        function runBenchmark(N, lambda) {
+            const rng = seeded(42);
+            const scenarios = Array.from({ length: N }, () => generateScenario(rng));
+
+            const optimizers = Object.assign(
+                { greedyBaseline },
+                window.Optimizers || {}
+            );
+
+            const stats = {};
+            Object.keys(optimizers).forEach(name => {
+                stats[name] = { costs: [], wins: 0, iters: 0 };
+            });
+
+            scenarios.forEach(sc => {
+                const trial = {};
+                Object.keys(optimizers).forEach(name => {
+                    const t0 = performance.now();
+                    const res = optimizers[name](sc);
+                    const dt = performance.now() - t0;
+                    const c = costOf(sc, res.chosenFactorSet, lambda);
+                    stats[name].costs.push(c);
+                    stats[name].iters += (res.iterations || 0);
+                    trial[name] = { cost: c, time: dt };
+                });
+                // Winner = lowest cost on this scenario
+                const winner = Object.keys(trial).reduce((a, b) =>
+                    trial[a].cost <= trial[b].cost ? a : b);
+                stats[winner].wins += 1;
+            });
+
+            // Aggregate
+            return Object.keys(stats).map(name => {
+                const c = stats[name].costs;
+                const mean = c.reduce((s, v) => s + v, 0) / c.length;
+                const variance = c.reduce((s, v) => s + (v - mean) ** 2, 0) / c.length;
+                return {
+                    name,
+                    meanCost: mean,
+                    stdCost: Math.sqrt(variance),
+                    wins: stats[name].wins,
+                    winRate: stats[name].wins / N,
+                    avgIters: stats[name].iters / N
+                };
+            }).sort((a, b) => a.meanCost - b.meanCost);
+        }
+
+        function render(rows) {
+            const baseline = rows.find(r => r.name === 'greedyBaseline').meanCost;
+            const html = `
+                <div class="panel">
+                    <h2>Results (lower mean cost = better)</h2>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Optimizer</th>
+                                <th>Mean cost</th>
+                                <th>σ cost</th>
+                                <th>Wins</th>
+                                <th>Win rate</th>
+                                <th>Avg iters</th>
+                                <th>vs greedy</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${rows.map((r, i) => `
+                                <tr class="${i === 0 ? 'winner' : ''}">
+                                    <td>${r.name}${r.name === 'greedyBaseline' ? ' <span class="sub">(reference)</span>' : ''}</td>
+                                    <td class="num">${r.meanCost.toFixed(2)}</td>
+                                    <td class="num">${r.stdCost.toFixed(2)}</td>
+                                    <td class="num">${r.wins}</td>
+                                    <td class="num">${(r.winRate * 100).toFixed(1)}%</td>
+                                    <td class="num">${r.avgIters.toFixed(1)}</td>
+                                    <td class="num ${r.name === 'greedyBaseline' ? '' : (r.meanCost < baseline ? 'ok' : 'err')}">
+                                        ${r.name === 'greedyBaseline' ? '—' :
+                                          ((baseline - r.meanCost) / baseline * 100).toFixed(1) + '%'}
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+            document.getElementById('results').innerHTML = html;
+        }
+
+        document.getElementById('run-btn').addEventListener('click', function () {
+            const N = parseInt(document.getElementById('n-scenarios').value, 10);
+            const lambda = parseFloat(document.getElementById('lambda').value);
+            const status = document.getElementById('status');
+            status.textContent = 'running…';
+            setTimeout(() => {
+                const rows = runBenchmark(N, lambda);
+                render(rows);
+                const registered = Object.keys(window.Optimizers || {});
+                status.innerHTML = registered.length === 0
+                    ? '<span class="warn">No optimizer registered — only greedy baseline ran. Plug in window.Optimizers.simulatedAnnealing to compare.</span>'
+                    : `<span class="ok">Done — compared ${registered.length + 1} optimizers over ${N} scenarios.</span>`;
+            }, 10);
+        });
+
+        // Auto-run once on load with defaults.
+        document.getElementById('run-btn').click();
+    })();
+    </script>
 </body>
 </html>

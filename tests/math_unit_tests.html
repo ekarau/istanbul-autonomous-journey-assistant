@@ -1,7 +1,167 @@
 <!DOCTYPE html>
 <html lang="tr">
-<head><meta charset="UTF-8"><title>Math Unit Tests — TODO</title></head>
+<head>
+    <meta charset="UTF-8">
+    <title>Math Model — Unit Tests</title>
+    <style>
+        body { font-family: -apple-system, "Segoe UI", sans-serif; background: #0E1117; color: #E6EDF3; margin: 0; padding: 24px; }
+        h1 { font-size: 1.4rem; margin: 0 0 4px; }
+        .sub { color: #8B949E; font-size: 0.85rem; margin-bottom: 20px; }
+        .summary { display: inline-block; padding: 8px 14px; border-radius: 8px; font-weight: 700; margin-bottom: 16px; }
+        .summary.pass { background: #1F4E2C; color: #7FE5A6; }
+        .summary.fail { background: #5A1F1F; color: #FF8A8A; }
+        .test { padding: 10px 14px; margin: 6px 0; border-radius: 8px; border-left: 3px solid; font-family: ui-monospace, "Cascadia Code", monospace; font-size: 0.8rem; }
+        .test.pass { background: #11221A; border-color: #2ECC71; }
+        .test.fail { background: #2A1414; border-color: #FF4D4D; }
+        .test .name { font-weight: 700; color: #E6EDF3; }
+        .test .detail { color: #8B949E; margin-top: 4px; line-height: 1.5; }
+        .badge { display: inline-block; min-width: 44px; text-align: center; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; font-weight: 700; margin-right: 8px; }
+        .badge.pass { background: #2ECC71; color: #0E1117; }
+        .badge.fail { background: #FF4D4D; color: #0E1117; }
+        code { color: #64FFDA; }
+    </style>
+</head>
 <body>
-<!-- TODO — Mathematical Modeler (Tuğba): dotProduct, l2Norm, probabilityUnion, expectedDelay için sayısal birim testler. -->
+    <h1>Math Model — Unit Tests</h1>
+    <div class="sub">COE017 · tests <code>../src/math/math_model.js</code> via <code>window.MathModel</code></div>
+    <div id="summary" class="summary"></div>
+    <div id="results"></div>
+
+    <script src="../src/math/math_model.js"></script>
+    <script>
+    (function () {
+        'use strict';
+
+        const EPS = 1e-6;
+        const results = [];
+
+        function assert(name, cond, detail) {
+            results.push({ name, pass: !!cond, detail: detail || '' });
+        }
+        function assertClose(name, actual, expected, eps) {
+            eps = eps == null ? EPS : eps;
+            const ok = Math.abs(actual - expected) <= eps;
+            assert(name, ok, `expected ≈ ${expected}, got ${actual} (Δ=${Math.abs(actual - expected).toExponential(2)}, eps=${eps})`);
+        }
+        function assertEqual(name, actual, expected) {
+            const ok = JSON.stringify(actual) === JSON.stringify(expected);
+            assert(name, ok, `expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
+        }
+
+        // ── 1. buildFeatureVector ──────────────────────────────
+        const x1 = MathModel.buildFeatureVector(['accident', 'rain']);
+        assert('buildFeatureVector: length is 9 (= |FACTOR_KEYS|)', x1.length === 9);
+        assertClose('buildFeatureVector: accident bit set (idx 0)', x1[0], 1.0);
+        assertClose('buildFeatureVector: rain bit set (idx 1)', x1[1], 1.0);
+        assertClose('buildFeatureVector: roadwork bit unset (idx 2)', x1[2], 0.0);
+        assertClose('buildFeatureVector: empty input → zero vector L2', MathModel.l2Norm(MathModel.buildFeatureVector([])), 0.0);
+        assert('buildFeatureVector: ignores unknown factor key', MathModel.l2Norm(MathModel.buildFeatureVector(['nonsense'])) === 0);
+
+        // ── 2. dotProduct ──────────────────────────────────────
+        const a = new Float64Array([1, 2, 3]);
+        const b = new Float64Array([4, 5, 6]);
+        assertClose('dotProduct: [1,2,3]·[4,5,6] = 32', MathModel.dotProduct(a, b), 32);
+        assertClose('dotProduct: orthogonal vectors → 0',
+            MathModel.dotProduct(new Float64Array([1, 0]), new Float64Array([0, 1])), 0);
+
+        // ── 3. l2Norm ──────────────────────────────────────────
+        assertClose('l2Norm: ‖(3,4)‖₂ = 5', MathModel.l2Norm(new Float64Array([3, 4])), 5);
+        assertClose('l2Norm: zero vector = 0', MathModel.l2Norm(new Float64Array([0, 0, 0])), 0);
+        assertClose('l2Norm: feature with 4 ones = 2', MathModel.l2Norm(new Float64Array([1, 1, 1, 1])), 2);
+
+        // ── 4. probabilityUnion (complement rule) ──────────────
+        const empty = MathModel.probabilityUnion([]);
+        assertClose('probabilityUnion: empty set → 0', empty.prob, 0);
+
+        const accidentOnly = MathModel.probabilityUnion(['accident']);
+        assertClose('probabilityUnion: single factor = its base (accident=0.350)',
+            accidentOnly.prob, MathModel.DELAY_PARAMS.accident.base);
+
+        // 1 − (1 − 0.350)(1 − 0.180) = 1 − 0.650 × 0.820 = 0.467
+        const accRain = MathModel.probabilityUnion(['accident', 'rain']);
+        assertClose('probabilityUnion: accident+rain = 1−∏(1−pᵢ) ≈ 0.467',
+            accRain.prob, 1 - (1 - 0.350) * (1 - 0.180), 1e-9);
+
+        // ── 5. expectedDelay ───────────────────────────────────
+        const noDelay = MathModel.expectedDelay(60, []);
+        assertClose('expectedDelay: 60 min base, no factors → E[D]=0', noDelay.E, 0);
+        assertClose('expectedDelay: σ[D]=0 when no factors', noDelay.sigma, 0);
+
+        const peakOnly = MathModel.expectedDelay(60, ['peakHour']);
+        // E = 60 * 0.333 = 19.98 → rounded to 1 decimal = 20.0
+        assertClose('expectedDelay: 60 min × peakHour(0.333) → E[D] ≈ 20.0', peakOnly.E, 20.0, 0.05);
+        assert('expectedDelay: 95% CI low ≥ 0 (clamped)', peakOnly.ciLow >= 0);
+        assert('expectedDelay: 95% CI high > E[D]', peakOnly.ciHigh > peakOnly.E);
+
+        // ── 6. routeScoreMatrix ────────────────────────────────
+        const routeVecs = [
+            MathModel.buildFeatureVector(['accident', 'peakHour']),
+            MathModel.buildFeatureVector(['normal'])
+        ];
+        const scores = MathModel.routeScoreMatrix(routeVecs);
+        assert('routeScoreMatrix: returns N scores for N routes', scores.length === 2);
+        assert('routeScoreMatrix: heavy-incident route scores higher than normal',
+            scores[0] > scores[1]);
+
+        // ── 7. Logic engine — Modus Ponens ─────────────────────
+        const r1 = MathModel.runLogicEngine({
+            activeFactorKeys: ['accident', 'intercontinental'],
+            delayPercent: 70
+        });
+        const fired1 = r1.conclusions.map(c => c.conclusion);
+        assert('logic: accident∧intercontinental → FERRY_OR_MARMARAY_STRONGLY_ADVISED',
+            fired1.includes('FERRY_OR_MARMARAY_STRONGLY_ADVISED'));
+        assert('logic: delay 70% triggers CONSIDER_ALTERNATIVE_MODE',
+            fired1.includes('CONSIDER_ALTERNATIVE_MODE'));
+        assert('logic: maxSeverity = 3 (CRITICAL) on dual-incident',
+            r1.maxSeverity === 3);
+
+        const r2 = MathModel.runLogicEngine({ activeFactorKeys: ['normal'], delayPercent: 5 });
+        const fired2 = r2.conclusions.map(c => c.conclusion);
+        assert('logic: normal traffic → LOW_RISK_PROCEED', fired2.includes('LOW_RISK_PROCEED'));
+        assert('logic: severity = 1 (INFO) for normal', r2.maxSeverity === 1);
+
+        const r3 = MathModel.runLogicEngine({ activeFactorKeys: [], delayPercent: 0 });
+        assert('logic: empty facts → no rules fire', r3.conclusions.length === 0);
+
+        // ── 8. computeFullModel — integration smoke ────────────
+        const full = MathModel.computeFullModel({
+            activeFactorKeys: ['accident', 'peakHour', 'intercontinental'],
+            baseTimeMin: 45,
+            routeVectors: routeVecs
+        });
+        assert('computeFullModel: featureVector length 9', full.featureVector.length === 9);
+        assert('computeFullModel: linearScore in [0,1]',
+            full.linearScore >= 0 && full.linearScore <= 1);
+        assert('computeFullModel: finalDelayPct in [0,100]',
+            full.finalDelayPct >= 0 && full.finalDelayPct <= 100);
+        assert('computeFullModel: probabilityResult.prob in [0,1]',
+            full.probabilityResult.prob >= 0 && full.probabilityResult.prob <= 1);
+        assert('computeFullModel: delayStats has E, sigma, ciLow, ciHigh',
+            'E' in full.delayStats && 'sigma' in full.delayStats &&
+            'ciLow' in full.delayStats && 'ciHigh' in full.delayStats);
+        assert('computeFullModel: summaryLines non-empty', full.summaryLines.length > 0);
+        assert('computeFullModel: routeRankScores matches input route count',
+            full.routeRankScores.length === routeVecs.length);
+
+        // ── Render report ──────────────────────────────────────
+        const passed = results.filter(r => r.pass).length;
+        const total = results.length;
+        const allPass = passed === total;
+
+        const summary = document.getElementById('summary');
+        summary.className = 'summary ' + (allPass ? 'pass' : 'fail');
+        summary.textContent = `${passed} / ${total} passed` + (allPass ? '  ✓' : '  ✗');
+
+        const out = document.getElementById('results');
+        out.innerHTML = results.map(r => `
+            <div class="test ${r.pass ? 'pass' : 'fail'}">
+                <span class="badge ${r.pass ? 'pass' : 'fail'}">${r.pass ? 'PASS' : 'FAIL'}</span>
+                <span class="name">${r.name}</span>
+                ${r.detail && !r.pass ? `<div class="detail">${r.detail}</div>` : ''}
+            </div>
+        `).join('');
+    })();
+    </script>
 </body>
 </html>
