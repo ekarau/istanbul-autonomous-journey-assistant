@@ -1,5 +1,3 @@
-# Data Sources & Calibration
-
 # Data Sources & Model Calibration
 
 **Module:** Data & Simulation Engineer  
