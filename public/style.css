@@ -610,3 +610,91 @@ body {
         box-shadow: 0 0 0 0 rgba(211, 47, 47, 0);
     }
 }
+/* ── Data Source Bar ───────────────────────────────────── */
+.data-source-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 14px;
+    background: rgba(255,255,255,0.04);
+    border-top: 1px solid rgba(255,255,255,0.07);
+    border-radius: 0 0 12px 12px;
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    gap: 10px;
+}
+
+.data-source-bar #data-source-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.badge-tag {
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 1px 6px;
+    border-radius: 4px;
+    text-transform: uppercase;
+}
+
+.badge-tag.live   { background: rgba(100,255,218,0.15); color: #64FFDA; }
+.badge-tag.cached { background: rgba(255,193,7,0.15);   color: #FFC107; }
+
+#refresh-incidents-btn {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.12);
+    color: var(--text-secondary);
+    font-size: 0.72rem;
+    padding: 4px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+
+#refresh-incidents-btn:hover {
+    background: rgba(100,255,218,0.12);
+    color: #64FFDA;
+    border-color: rgba(100,255,218,0.3);
+}
+
+#refresh-incidents-btn i {
+    font-size: 0.7rem;
+}
+
+/* pulse-green & pulse-yellow (data source indicators) */
+.pulse-green, .pulse-yellow {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.pulse-green {
+    background: #64FFDA;
+    box-shadow: 0 0 0 0 rgba(100,255,218,0.6);
+    animation: pulseGreen 2s infinite;
+}
+
+.pulse-yellow {
+    background: #FFC107;
+    box-shadow: 0 0 0 0 rgba(255,193,7,0.6);
+    animation: pulseYellow 2s infinite;
+}
+
+@keyframes pulseGreen {
+    0%   { box-shadow: 0 0 0 0 rgba(100,255,218,0.6); }
+    70%  { box-shadow: 0 0 0 6px rgba(100,255,218,0); }
+    100% { box-shadow: 0 0 0 0 rgba(100,255,218,0); }
+}
+
+@keyframes pulseYellow {
+    0%   { box-shadow: 0 0 0 0 rgba(255,193,7,0.6); }
+    70%  { box-shadow: 0 0 0 6px rgba(255,193,7,0); }
+    100% { box-shadow: 0 0 0 0 rgba(255,193,7,0); }
+}
