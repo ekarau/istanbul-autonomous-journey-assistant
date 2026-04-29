@@ -186,6 +186,7 @@
                     <td style="padding:4px 6px;">${r.name}${tag}</td>
                     <td style="padding:4px 6px;text-align:right;color:var(--accent-color);font-family:ui-monospace,monospace;">${r.meanDelay.toFixed(1)}</td>
                     <td style="padding:4px 6px;text-align:right;font-family:ui-monospace,monospace;">${r.stdDelay.toFixed(1)}</td>
+                    <td style="padding:4px 6px;text-align:right;font-family:ui-monospace,monospace;">${r.meanCost.toFixed(2)}</td>
                     <td style="padding:4px 6px;text-align:right;font-family:ui-monospace,monospace;">${(r.winRate * 100).toFixed(0)}%</td>
                     <td style="padding:4px 6px;text-align:right;color:${impColor};font-weight:600;font-family:ui-monospace,monospace;">
                         ${r.name === 'greedyBaseline' ? '—' : (r.improvementPct >= 0 ? '+' : '') + r.improvementPct.toFixed(1) + '%'}
@@ -204,6 +205,7 @@
                         <th style="text-align:left;padding:4px 6px;">Optimizer</th>
                         <th style="text-align:right;padding:4px 6px;">μ delay</th>
                         <th style="text-align:right;padding:4px 6px;">σ delay</th>
+                        <th style="text-align:right;padding:4px 6px;" title="cost = E[D] + λ·‖x‖₂">cost</th>
                         <th style="text-align:right;padding:4px 6px;">Win</th>
                         <th style="text-align:right;padding:4px 6px;">vs greedy</th>
                     </tr>
@@ -211,6 +213,16 @@
                 <tbody>${tableRows}</tbody>
             </table>
         `;
+
+        // Winner snapshot — paint top-row aggregates into the live cells so the
+        // panel never sits empty after a benchmark. Live tick still overrides
+        // these on the next optimizer iteration.
+        const winner = rows[0];
+        history = [];                              // clear any stale sparkline
+        setCell('#mp-E',     winner.meanDelay);
+        setCell('#mp-sigma', winner.stdDelay);
+        setCell('#mp-iter',  winner.avgIters);
+        setCell('#mp-T',     null);                // greedy / GA have no temperature
     }
 
     function reset() {

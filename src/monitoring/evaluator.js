@@ -65,6 +65,24 @@
         return { chosenFactorSet: best, iterations: scenario.candidateFactorSets.length };
     }
 
+    // ── λ-aware greedy ─────────────────────────────────────────────
+    // Same enumerative strategy as greedyBaseline, but scores each
+    // candidate with the *full* evaluator cost function:
+    //     cost = E[D] + λ · ‖x‖₂
+    // i.e. it actually pays the L2 risk penalty. With λ=0 it
+    // collapses onto greedyBaseline; as λ grows it diverges and
+    // starts preferring smaller (less-risky) factor sets.
+    function lambdaGreedy(scenario, lambda) {
+        const lam = (lambda === undefined) ? 2.0 : lambda;
+        let best = null;
+        let bestCost = Infinity;
+        scenario.candidateFactorSets.forEach(set => {
+            const c = costOf(scenario, set, lam);
+            if (c < bestCost) { bestCost = c; best = set; }
+        });
+        return { chosenFactorSet: best, iterations: scenario.candidateFactorSets.length };
+    }
+
     // ── Cost function (single source of truth) ────────────────────
     //   cost = E[D]  +  λ · ‖x‖₂
     function costOf(scenario, factorSet, lambda) {
@@ -107,6 +125,92 @@
         return { baseTimeMin, candidateFactorSets };
     }
 
+    // ── Geographic scenario generator ─────────────────────────────
+    // Picks random Istanbul origin / destination pairs inside a
+    // realistic bounding box, derives geographic flags the same way
+    // agent.js does (intercontinental, westSide, longRoute), and
+    // turns them into candidate factor-subsets that *mean* something:
+    //
+    //   candidate 0 — direct surface route (all geo + env factors)
+    //   candidate 1 — detour around the west-side congestion zone
+    //   candidate 2 — public transit (absorbs road-incident factors)
+    //   candidate 3 — Marmaray-like rail (also bypasses Bosphorus crossing)
+    //
+    // Optional environmental factors (peakHour, rain, accident, …)
+    // fire stochastically with calibrated frequencies, so the
+    // benchmark population mirrors a realistic Istanbul day.
+    const ISTANBUL_BBOX = { latMin: 40.94, latMax: 41.20, lonMin: 28.65, lonMax: 29.30 };
+
+    function haversineKm(aLat, aLon, bLat, bLon) {
+        const R = 6371;
+        const dLat = (bLat - aLat) * Math.PI / 180;
+        const dLon = (bLon - aLon) * Math.PI / 180;
+        const s1 = Math.sin(dLat / 2);
+        const s2 = Math.sin(dLon / 2);
+        const a = s1 * s1 + Math.cos(aLat * Math.PI / 180) * Math.cos(bLat * Math.PI / 180) * s2 * s2;
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    function randomIstanbulPoint(rng) {
+        return {
+            lat: ISTANBUL_BBOX.latMin + rng() * (ISTANBUL_BBOX.latMax - ISTANBUL_BBOX.latMin),
+            lon: ISTANBUL_BBOX.lonMin + rng() * (ISTANBUL_BBOX.lonMax - ISTANBUL_BBOX.lonMin)
+        };
+    }
+
+    function generateGeoScenario(rng) {
+        let origin, dest, distance;
+        // Reject pairs that are absurdly close (< 1 km) — uninteresting.
+        do {
+            origin   = randomIstanbulPoint(rng);
+            dest     = randomIstanbulPoint(rng);
+            distance = haversineKm(origin.lat, origin.lon, dest.lat, dest.lon);
+        } while (distance < 1);
+
+        const isIntercontinental =
+            (origin.lon < 29.0 && dest.lon > 29.0) || (origin.lon > 29.0 && dest.lon < 29.0);
+        const isWestSide = origin.lon < 28.8 && dest.lon < 28.9;
+        const isLong     = distance > 15;
+
+        // Build the geographic + environmental factor set.
+        const baseFactors = [];
+        if (isIntercontinental) baseFactors.push('intercontinental');
+        if (isWestSide)         baseFactors.push('westSide');
+        if (isLong)             baseFactors.push('longRoute');
+        if (rng() < 0.40)       baseFactors.push('peakHour');     // ~40% chance peak
+        if (rng() < 0.18)       baseFactors.push('rain');         // ~18% chance rain
+        if (rng() < 0.12)       baseFactors.push('accident');     // ~12% on-route accident
+        if (rng() < 0.10)       baseFactors.push('roadwork');
+        if (rng() < 0.07)       baseFactors.push('breakdown');
+        if (baseFactors.length === 0) baseFactors.push('normal');
+
+        const ROAD_INCIDENTS = ['accident', 'breakdown', 'roadwork', 'westSide'];
+
+        const candidateFactorSets = [
+            baseFactors.slice(),                                                                  // direct surface
+            baseFactors.filter(k => k !== 'westSide'),                                            // detour west
+            baseFactors.filter(k => !ROAD_INCIDENTS.includes(k)),                                 // transit
+            baseFactors.filter(k => !ROAD_INCIDENTS.includes(k) && k !== 'intercontinental')      // Marmaray-like
+        ].filter(set => set.length > 0);
+
+        // Empty filters can collapse identical sets — dedupe.
+        const seen = new Set();
+        const unique = candidateFactorSets.filter(set => {
+            const key = set.slice().sort().join('|');
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+
+        const baseTimeMin = Math.round((distance / 25) * 60 + 10);
+
+        return {
+            baseTimeMin,
+            candidateFactorSets: unique,
+            meta: { origin, dest, distance, isIntercontinental, isWestSide, isLong }
+        };
+    }
+
     // ── Aggregate helper ──────────────────────────────────────────
     function meanStd(arr) {
         if (arr.length === 0) return { mean: 0, std: 0 };
@@ -122,7 +226,13 @@
      * Runs every registered optimizer plus the greedy baseline over
      * N seeded scenarios and returns ranked statistics.
      *
-     * @param {{N?:number, lambda?:number, seed?:number}} opts
+     * @param {{
+     *   N?:number,
+     *   lambda?:number,
+     *   seed?:number,
+     *   scenarioType?: 'synthetic' | 'geo',  // default: 'synthetic'
+     *   generator?: (rng:Function) => object  // overrides scenarioType
+     * }} opts
      * @returns {{
      *   name:string, meanCost:number, stdCost:number,
      *   meanDelay:number, stdDelay:number,
@@ -135,11 +245,16 @@
         const lambda = (opts && opts.lambda !== undefined) ? opts.lambda : 2.0;
         const seed   = (opts && opts.seed)   || 42;
 
+        const generator = (opts && typeof opts.generator === 'function') ? opts.generator
+                       : (opts && opts.scenarioType === 'geo')           ? generateGeoScenario
+                       : generateScenario;
+
         const rng       = seeded(seed);
-        const scenarios = Array.from({ length: N }, () => generateScenario(rng));
+        const scenarios = Array.from({ length: N }, () => generator(rng));
 
         const optimizers = Object.assign(
             { greedyBaseline },
+            { lambdaGreedy: (sc) => lambdaGreedy(sc, lambda) },
             (typeof window.Optimizers === 'object' && window.Optimizers) || {}
         );
 
@@ -186,13 +301,73 @@
         }).sort((a, b) => a.meanCost - b.meanCost);
     }
 
+    // ── Adapter: register Optimization Specialist's SA into the
+    //    benchmark so the side-panel "Run" compares Greedy vs SA.
+    //
+    //    Heuristic mapping from factor sets → distance / transfer
+    //    proxies, so SA's cost function (α·E[D] + β·dist + γ·tr −
+    //    δ·conf) actually has discriminating signal beyond E[D].
+    //    Without this, every candidate has identical dist+transfers
+    //    and SA collapses to the same ranking as Greedy. ────────
+    function _adapterRouteFromSet(set, scenario) {
+        const baseDist = (scenario.meta && scenario.meta.distance) || 30;
+        const isTransitLike = !set.some(k =>
+            k === 'accident' || k === 'breakdown' || k === 'roadwork');
+        const isMarmarayLike = isTransitLike && !set.includes('intercontinental');
+
+        // Surface routes longer when there's a westSide detour or
+        // intercontinental crossing; transit shaves distance, Marmaray
+        // takes a slight detour but with no transfers.
+        let distanceKm = baseDist;
+        if (set.includes('longRoute'))       distanceKm *= 1.10;
+        if (set.includes('westSide'))        distanceKm *= 1.08;
+        if (isTransitLike)                   distanceKm *= 0.95;
+        if (isMarmarayLike)                  distanceKm *= 1.05;
+
+        const transferCount = isMarmarayLike ? 1
+                            : isTransitLike  ? 2
+                            : 0;
+
+        return {
+            activeKeys:    set.length ? set : ['normal'],
+            baseTimeMin:   scenario.baseTimeMin,
+            distanceKm,
+            transferCount
+        };
+    }
+
+    if (window.SimulatedAnnealing && typeof window.SimulatedAnnealing.run === 'function') {
+        window.Optimizers = window.Optimizers || {};
+        window.Optimizers.simulatedAnnealing = function (scenario) {
+            const sets = scenario.candidateFactorSets || [];
+            if (sets.length === 0) return { chosenFactorSet: [], iterations: 0 };
+            if (sets.length === 1) return { chosenFactorSet: sets[0], iterations: 0 };
+
+            const routes = sets.map((set, i) => Object.assign(
+                { name: 'cand' + i },
+                _adapterRouteFromSet(set, scenario)
+            ));
+
+            const r = window.SimulatedAnnealing.run(routes);
+            if (!r) return { chosenFactorSet: sets[0], iterations: 0 };
+            const idx = parseInt(String(r.bestRoute.name).replace('cand', ''), 10);
+            return {
+                chosenFactorSet: sets[Number.isFinite(idx) ? idx : 0],
+                iterations:      r.iterations || 0
+            };
+        };
+        console.info('[Evaluator] Registered SA adapter → window.Optimizers.simulatedAnnealing');
+    }
+
     // ── Public API ────────────────────────────────────────────────
     window.Evaluator = {
         run,
         ALL_FACTORS,
         greedyBaseline,
+        lambdaGreedy,
         costOf,
         generateScenario,
+        generateGeoScenario,
         seeded
     };
 

@@ -232,12 +232,15 @@ document.addEventListener('DOMContentLoaded', function () {
     setTimeout(() => { map.invalidateSize(); }, 500);
 
     window.map = map;
-    window.userMarker  = null;
+    window.userMarker   = null;
     window.targetMarker = null;
-    window.routePath   = null;
+    window.originMarker = null;       // user-picked origin (typed or map-click)
+    window.routePath    = null;
     window.altRoutePath = null;
-    window.selectedLat = null;
-    window.selectedLon = null;
+    window.selectedLat  = null;       // destination lat
+    window.selectedLon  = null;       // destination lon
+    window.originLat    = null;       // origin lat (null → fall back to GPS, then default)
+    window.originLon    = null;
 
     window.typeWriter = async function (text, elementId) {
         const el = document.getElementById(elementId);
@@ -256,6 +259,34 @@ document.addEventListener('DOMContentLoaded', function () {
             Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
             Math.sin(dLon / 2) ** 2;
         return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    // ── Boğaz orta hattı (piecewise-linear yaklaşım) ──────────────
+    // Eski (lng < 29.0) testi Boğaz'ın eğriselliğini görmüyordu:
+    // örn. Tarabya (Avrupa, 29.06°E) ile Vadistanbul (28.99°E) yan-
+    // lışlıkla "intercontinental" çıkıyordu. Bu polyline kuzey-güney
+    // boyunca Boğaz orta hattını izleyerek doğru yaka tespiti yapar.
+    const BOSPHORUS_KNOTS = [
+        [40.965, 29.020], [41.000, 28.985], [41.025, 28.995],
+        [41.045, 29.015], [41.080, 29.050], [41.115, 29.062],
+        [41.180, 29.085], [41.230, 29.110]
+    ];
+    function bosphorusMidLng(lat) {
+        if (lat <= BOSPHORUS_KNOTS[0][0]) return BOSPHORUS_KNOTS[0][1];
+        const last = BOSPHORUS_KNOTS[BOSPHORUS_KNOTS.length - 1];
+        if (lat >= last[0]) return last[1];
+        for (let i = 0; i < BOSPHORUS_KNOTS.length - 1; i++) {
+            const a = BOSPHORUS_KNOTS[i], b = BOSPHORUS_KNOTS[i + 1];
+            if (lat >= a[0] && lat <= b[0]) {
+                const t = (lat - a[0]) / (b[0] - a[0]);
+                return a[1] + t * (b[1] - a[1]);
+            }
+        }
+        return last[1];
+    }
+    function isEuropeanSide(lat, lng)  { return lng < bosphorusMidLng(lat); }
+    function isIntercontinentalTrip(aLat, aLng, bLat, bLng) {
+        return isEuropeanSide(aLat, aLng) !== isEuropeanSide(bLat, bLng);
     }
 
     const accidentIcon = L.divIcon({
@@ -280,42 +311,131 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const destinationInput = document.getElementById('destination-input');
     const suggestionsList  = document.getElementById('suggestions');
+    const originInput        = document.getElementById('origin-input');
+    const originSuggestions  = document.getElementById('origin-suggestions');
     let debounceTimer;
+    let originDebounceTimer;
 
-    destinationInput.addEventListener('input', () => {
-        clearTimeout(debounceTimer);
-        const query = destinationInput.value;
-        if (query.length < 3) { suggestionsList.style.display = 'none'; return; }
-        debounceTimer = setTimeout(async () => {
-            try {
-                const res  = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${query}+Istanbul&limit=5`);
-                const data = await res.json();
-                if (data.length > 0) {
-                    suggestionsList.innerHTML = '';
-                    data.forEach(item => {
-                        const div = document.createElement('div');
-                        div.className = 'suggestion-item';
-                        div.innerText = item.display_name.split(',')[0];
-                        div.addEventListener('click', () => {
-                            destinationInput.value = div.innerText;
-                            suggestionsList.style.display = 'none';
-                            prepareDestination(parseFloat(item.lat), parseFloat(item.lon), div.innerText);
+    /** Generic Nominatim autocomplete wiring — used by both origin & destination. */
+    function wireAutocomplete(inputEl, listEl, onPick) {
+        let timer;
+        inputEl.addEventListener('input', () => {
+            clearTimeout(timer);
+            const query = inputEl.value;
+            if (query.length < 3) { listEl.style.display = 'none'; return; }
+            timer = setTimeout(async () => {
+                try {
+                    const res  = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${query}+Istanbul&limit=5`);
+                    const data = await res.json();
+                    if (data.length > 0) {
+                        listEl.innerHTML = '';
+                        data.forEach(item => {
+                            const div = document.createElement('div');
+                            div.className = 'suggestion-item';
+                            div.innerText = item.display_name.split(',')[0];
+                            div.addEventListener('click', () => {
+                                inputEl.value = div.innerText;
+                                listEl.style.display = 'none';
+                                onPick(parseFloat(item.lat), parseFloat(item.lon), div.innerText);
+                            });
+                            listEl.appendChild(div);
                         });
-                        suggestionsList.appendChild(div);
-                    });
-                    suggestionsList.style.display = 'block';
-                }
-            } catch (e) { console.error(e); }
-        }, 500);
-    });
+                        listEl.style.display = 'block';
+                    } else {
+                        listEl.style.display = 'none';
+                    }
+                } catch (e) { console.error(e); }
+            }, 500);
+        });
+        inputEl.addEventListener('blur', () => {
+            // Allow click on suggestion before hiding.
+            setTimeout(() => { listEl.style.display = 'none'; }, 200);
+        });
+    }
+
+    wireAutocomplete(destinationInput, suggestionsList, prepareDestination);
+    if (originInput) wireAutocomplete(originInput, originSuggestions, prepareOrigin);
 
     function prepareDestination(lat, lon, name) {
         window.selectedLat = lat;
         window.selectedLon = lon;
         if (window.targetMarker) map.removeLayer(window.targetMarker);
         window.targetMarker = L.marker([lat, lon]).addTo(map).bindPopup(`Target: ${name}`).openPopup();
+        const destInput = document.getElementById('destination-input');
+        if (destInput) destInput.value = name;
         map.flyTo([lat, lon], 14);
+        if (typeof window.syncClearVisibility === 'function') window.syncClearVisibility();
     }
+
+    function prepareOrigin(lat, lon, name) {
+        window.originLat = lat;
+        window.originLon = lon;
+        if (window.originMarker) map.removeLayer(window.originMarker);
+        const originIcon = L.divIcon({
+            className: 'origin-pick-marker',
+            html: '<div style="background:#2ECC71;width:14px;height:14px;border-radius:50%;' +
+                  'border:3px solid white;box-shadow:0 0 12px rgba(46,204,113,0.7);"></div>',
+            iconSize: [20, 20], iconAnchor: [10, 10]
+        });
+        window.originMarker = L.marker([lat, lon], { icon: originIcon })
+            .addTo(map).bindPopup(`Origin: ${name}`).openPopup();
+        const oi = document.getElementById('origin-input');
+        if (oi) oi.value = name;
+        if (typeof window.syncClearVisibility === 'function') window.syncClearVisibility();
+    }
+
+    // Reverse-geocode a clicked map point to a readable name (best-effort).
+    async function reverseGeocode(lat, lon) {
+        try {
+            const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=16`);
+            const data = await res.json();
+            if (data && data.display_name) {
+                return data.display_name.split(',').slice(0, 2).join(',').trim();
+            }
+        } catch (_) { /* offline / blocked → fall through */ }
+        return `${lat.toFixed(3)}, ${lon.toFixed(3)}`;
+    }
+
+    // Map click → small popup with "Set as Origin" / "Set as Destination" buttons.
+    map.on('click', function (e) {
+        const lat = e.latlng.lat;
+        const lon = e.latlng.lng;
+        const html = `
+            <div style="display:flex;flex-direction:column;gap:6px;font-family:Inter,sans-serif;min-width:170px;">
+                <div style="font-size:0.7rem;color:#8892B0;letter-spacing:0.5px;text-transform:uppercase;">
+                    ${lat.toFixed(4)}, ${lon.toFixed(4)}
+                </div>
+                <button class="map-pick-btn" data-pick="origin"
+                        style="background:#2ECC71;border:0;color:#0A192F;padding:7px 10px;border-radius:6px;
+                               font-weight:700;cursor:pointer;font-size:0.78rem;text-align:left;">
+                    <i class="fa-solid fa-circle-dot"></i> &nbsp;Set as Origin
+                </button>
+                <button class="map-pick-btn" data-pick="destination"
+                        style="background:#FF4D4D;border:0;color:white;padding:7px 10px;border-radius:6px;
+                               font-weight:700;cursor:pointer;font-size:0.78rem;text-align:left;">
+                    <i class="fa-solid fa-location-dot"></i> &nbsp;Set as Destination
+                </button>
+            </div>`;
+        const popup = L.popup({ closeButton: true, autoPan: true })
+            .setLatLng(e.latlng)
+            .setContent(html)
+            .openOn(map);
+
+        // Bind handlers AFTER Leaflet injects the DOM.
+        setTimeout(() => {
+            const node = popup.getElement();
+            if (!node) return;
+            node.querySelectorAll('.map-pick-btn').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const pick = btn.dataset.pick;
+                    map.closePopup();
+                    const name = await reverseGeocode(lat, lon);
+                    if (pick === 'origin') prepareOrigin(lat, lon, name);
+                    else                   prepareDestination(lat, lon, name);
+                });
+            });
+        }, 30);
+    });
 
     document.getElementById('search-btn').addEventListener('click', async function () {
         if (!window.selectedLat || !window.selectedLon) {
@@ -340,10 +460,19 @@ document.addEventListener('DOMContentLoaded', function () {
     //  AI DECISION CORE  —  driven by probabilistic model
     // ============================================================
 
+    /** Resolve start point: typed/clicked origin → GPS location → hardcoded default. */
+    function resolveStart() {
+        if (window.originLat != null && window.originLon != null) {
+            return { lat: window.originLat, lng: window.originLon };
+        }
+        if (window.userMarker) return window.userMarker.getLatLng();
+        return { lat: 41.0422, lng: 29.0075 };
+    }
+
     async function simulateAIDecision(tLat, tLon) {
-        const start = window.userMarker ? window.userMarker.getLatLng() : { lat: 41.0422, lng: 29.0075 };
+        const start = resolveStart();
         const distance = calculateDistance(start.lat, start.lng, tLat, tLon);
-        const isIntercontinental = (start.lng < 29.0 && tLon > 29.0) || (start.lng > 29.0 && tLon < 29.0);
+        const isIntercontinental = isIntercontinentalTrip(start.lat, start.lng, tLat, tLon);
         const isWestSide = start.lng < 28.8 && tLon < 28.9;
         const activeIncidents = getActiveIncidentsOnRoute(start.lat, start.lng, tLat, tLon);
 
@@ -417,9 +546,9 @@ document.addEventListener('DOMContentLoaded', function () {
             btn.classList.add('active');
             currentMode = btn.dataset.mode;
             if (window.selectedLat) {
-                const start = window.userMarker ? window.userMarker.getLatLng() : { lat: 41.0422, lng: 29.0075 };
+                const start = resolveStart();
                 const dist  = calculateDistance(start.lat, start.lng, window.selectedLat, window.selectedLon);
-                const isI   = (start.lng < 29.0 && window.selectedLon > 29.0) || (start.lng > 29.0 && window.selectedLon < 29.0);
+                const isI   = isIntercontinentalTrip(start.lat, start.lng, window.selectedLat, window.selectedLon);
                 const isW   = start.lng < 28.8 && window.selectedLon < 28.9;
                 const incs  = getActiveIncidentsOnRoute(start.lat, start.lng, window.selectedLat, window.selectedLon);
                 showContextRoutes(isI, isW, dist, incs);
@@ -475,7 +604,12 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         ];
 
-        let filtered = currentMode === 'best' ? allRoutes : allRoutes.filter(r => r.mode === currentMode);
+        // Marmaray is an undersea Bosphorus crossing — it only makes
+        // sense when the trip actually crosses the strait. For trips
+        // contained on a single continent, drop it.
+        let geoFiltered = isInter ? allRoutes : allRoutes.filter(r => r.name !== 'via Marmaray Line');
+
+        let filtered = currentMode === 'best' ? geoFiltered : geoFiltered.filter(r => r.mode === currentMode);
         if (filtered.length === 0) {
             list.innerHTML = `<div class="status-msg">No suitable routes for this mode.</div>`;
             return;
@@ -505,6 +639,49 @@ document.addEventListener('DOMContentLoaded', function () {
         document.querySelector('.status-text').innerHTML =
             `AI INFERENCE: Optimal path found — delay risk ${best.delay}%, confidence ${best.conf}%.`;
         appendMathPanel();
+
+        // ── Expose routes for SA + append optimizer panels ─────────────
+        // Build a context-aware activeKeys set so the SA / Hill-Climbing
+        // modules see the same factors the math model used.
+        const baseKeys = [];
+        if (isInter) baseKeys.push('intercontinental');
+        if (isWest)  baseKeys.push('westSide');
+        if (distance > 15) baseKeys.push('longRoute');
+        if (activeIncidents.some(i => i.type === 'accident'))  baseKeys.push('accident');
+        if (activeIncidents.some(i => i.type === 'roadwork'))  baseKeys.push('roadwork');
+        if (activeIncidents.some(i => i.type === 'breakdown')) baseKeys.push('breakdown');
+        const _hr = new Date().getHours();
+        if ((_hr >= 7 && _hr < 10) || (_hr >= 17 && _hr < 20)) baseKeys.push('peakHour');
+        if (baseKeys.length === 0) baseKeys.push('normal');
+
+        window.SUGGESTED_ROUTES = filtered.map(r => {
+            let keys = baseKeys.slice();
+            if (r.mode === 'transit') {
+                keys = keys.filter(k => k !== 'accident' && k !== 'roadwork');
+                if (r.name.toLowerCase().includes('marmaray')) {
+                    keys = keys.filter(k => k !== 'intercontinental' && k !== 'breakdown');
+                }
+            }
+            if (keys.length === 0) keys = ['normal'];
+            return {
+                name:          r.name,
+                activeKeys:    keys,
+                baseTimeMin:   r.total,
+                distanceKm:    parseFloat(r.dist),
+                transferCount: r.mode === 'transit'
+                    ? (r.name.toLowerCase().includes('marmaray') ? 1 : 2)
+                    : 0
+            };
+        });
+
+        if (window.Optimizer && typeof window.Optimizer.appendOptimizerPanel === 'function') {
+            try { window.Optimizer.appendOptimizerPanel(); }
+            catch (e) { console.warn('[agent] Optimizer panel failed:', e); }
+        }
+        if (window.SimulatedAnnealing && typeof window.SimulatedAnnealing.appendSAPanel === 'function') {
+            try { window.SimulatedAnnealing.appendSAPanel(); }
+            catch (e) { console.warn('[agent] SA panel failed:', e); }
+        }
     }
 
     // ── MATH MODEL PANEL ─────────────────────────────────────────────
@@ -618,4 +795,100 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     initMapIncidents();
+
+    // ============================================================
+    //  BENCHMARK PANEL  —  Evaluation Specialist hook
+    // ============================================================
+    //
+    //  Runs window.Evaluator over N seeded geographic scenarios and
+    //  paints the comparison table via window.MetricsPanel. Greedy
+    //  baseline is always available; any optimizer registered on
+    //  window.Optimizers.* (SA, GA, …) joins the comparison.
+    // ============================================================
+    const benchBtn = document.getElementById('bench-btn');
+    if (benchBtn && window.Evaluator && window.MetricsPanel) {
+        benchBtn.addEventListener('click', () => {
+            const N      = parseInt(document.getElementById('bench-n').value, 10) || 50;
+            const lambda = parseFloat(document.getElementById('bench-lambda').value);
+            const target = document.getElementById('bench-output');
+
+            if (!window.MetricsPanel.isMounted()) {
+                window.MetricsPanel.mount(target);
+            } else {
+                window.MetricsPanel.reset();
+            }
+
+            const rows = window.Evaluator.run({
+                N,
+                lambda: Number.isFinite(lambda) ? lambda : 2.0,
+                seed: 42,
+                scenarioType: 'geo'
+            });
+            window.MetricsPanel.renderSummary(rows);
+        });
+    }
+
+    // ── Benchmark floating button toggle ──────────────────────────
+    const benchToggle = document.getElementById('bench-toggle-btn');
+    const benchModal  = document.getElementById('bench-modal');
+    const benchClose  = document.getElementById('bench-close-btn');
+    if (benchToggle && benchModal) {
+        benchToggle.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            benchModal.classList.toggle('hidden');
+        });
+    }
+    if (benchClose && benchModal) {
+        benchClose.addEventListener('click', () => benchModal.classList.add('hidden'));
+    }
+    // Click outside to close.
+    document.addEventListener('click', (ev) => {
+        if (!benchModal || benchModal.classList.contains('hidden')) return;
+        if (benchModal.contains(ev.target) || (benchToggle && benchToggle.contains(ev.target))) return;
+        benchModal.classList.add('hidden');
+    });
+
+    // ── Clear (×) buttons for origin / destination inputs ─────────
+    function syncClearVisibility() {
+        const oc = document.getElementById('origin-clear');
+        const dc = document.getElementById('dest-clear');
+        if (oc) oc.classList.toggle('hidden',
+            !document.getElementById('origin-input').value && window.originLat == null);
+        if (dc) dc.classList.toggle('hidden',
+            !document.getElementById('destination-input').value && window.selectedLat == null);
+    }
+    window.syncClearVisibility = syncClearVisibility;
+
+    const originClear = document.getElementById('origin-clear');
+    if (originClear) {
+        originClear.addEventListener('click', () => {
+            document.getElementById('origin-input').value = '';
+            if (window.originMarker) { map.removeLayer(window.originMarker); window.originMarker = null; }
+            window.originLat = null;
+            window.originLon = null;
+            syncClearVisibility();
+        });
+    }
+    const destClear = document.getElementById('dest-clear');
+    if (destClear) {
+        destClear.addEventListener('click', () => {
+            document.getElementById('destination-input').value = '';
+            if (window.targetMarker)  { map.removeLayer(window.targetMarker);  window.targetMarker  = null; }
+            if (window.routePath)     { map.removeLayer(window.routePath);     window.routePath     = null; }
+            if (window.altRoutePath)  { map.removeLayer(window.altRoutePath);  window.altRoutePath  = null; }
+            window.selectedLat = null;
+            window.selectedLon = null;
+            const list = document.getElementById('routes-list');
+            if (list) list.innerHTML = '';
+            const status = document.querySelector('.status-text');
+            if (status) status.textContent = 'Waiting for destination...';
+            syncClearVisibility();
+        });
+    }
+    // Reflect typing into clear visibility.
+    ['origin-input', 'destination-input'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('input', syncClearVisibility);
+    });
+    syncClearVisibility();
 });

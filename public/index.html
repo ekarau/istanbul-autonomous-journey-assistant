@@ -31,16 +31,57 @@
                                 class="fa-solid fa-person-walking"></i></div>
                     </div>
                     <div class="search-main">
+                        <i class="fa-solid fa-circle-dot pill-icon pill-icon-origin"></i>
+                        <input type="text" placeholder="Starting point (or use GPS)" id="origin-input"
+                            autocomplete="off">
+                        <button id="origin-clear" class="input-clear hidden" title="Clear origin"
+                            aria-label="Clear origin">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                        <div id="origin-suggestions" class="suggestions-list"></div>
+                    </div>
+                    <div class="search-main">
                         <i class="fa-solid fa-location-dot pill-icon"></i>
                         <input type="text" placeholder="Where would you like to go?" id="destination-input"
                             autocomplete="off">
+                        <button id="dest-clear" class="input-clear hidden" title="Clear destination"
+                            aria-label="Clear destination">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
                         <button id="search-btn" class="pill-btn">Analyze Route</button>
+                        <div id="suggestions" class="suggestions-list"></div>
                     </div>
-                    <div id="suggestions" class="suggestions-list"></div>
                 </div>
             </div>
 
             <div id="map"></div>
+
+            <button id="bench-toggle-btn" class="bench-toggle-btn" title="Optimizer Benchmark"
+                aria-label="Open Optimizer Benchmark">
+                <i class="fa-solid fa-flask"></i>
+            </button>
+
+            <div id="bench-modal" class="bench-modal hidden" role="dialog" aria-modal="false">
+                <div class="bench-modal-card card">
+                    <div class="bench-modal-header">
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <i class="fa-solid fa-flask" style="color:var(--accent-color)"></i>
+                            <span style="font-size:0.9rem;font-weight:700;">Optimizer Benchmark</span>
+                        </div>
+                        <button id="bench-close-btn" class="bench-close-btn" aria-label="Close benchmark">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                    </div>
+                    <div class="bench-controls">
+                        <label class="bench-label">N <input type="number" id="bench-n" value="50" min="5"
+                                max="500"></label>
+                        <label class="bench-label">λ <input type="number" id="bench-lambda" value="2.0" step="0.1"
+                                min="0"></label>
+                        <button id="bench-btn" class="pill-btn">Run</button>
+                    </div>
+                    <div id="bench-output"></div>
+                </div>
+            </div>
 
             <div class="map-overlay bottom-info">
                 <div class="status-badge">
@@ -95,19 +136,18 @@
                 <div id="routes-list"></div>
             </section>
 
-            <div class="data-source-bar">
-                <span id="data-source-badge"><span class="pulse-yellow"></span> Connecting to IBB...</span>
-                <button id="refresh-incidents-btn" title="Refresh incident data">
-                    <i class="fa-solid fa-rotate"></i> Refresh
-                </button>
-            </div>
-
             <footer class="ai-footer">
                 <p>© 2026 Istanbul Autonomous Systems Project</p>
             </footer>
         </aside>
     </div>
-    <script src="app.js"></script>
+    <script src="../src/math/math_model.js"></script>
+    <script src="../src/optimization/optimizer.js"></script>
+    <script src="../src/optimization/baseline_greedy.js"></script>
+    <script src="../src/optimization/simulated_annealing.js"></script>
+    <script src="../src/monitoring/evaluator.js"></script>
+    <script src="../src/monitoring/metrics_panel.js"></script>
+    <script src="../src/decision/agent.js"></script>
 </body>
 
 </html>

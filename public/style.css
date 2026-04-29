@@ -129,12 +129,17 @@ body {
     align-items: center;
     gap: 12px;
     padding: 0 10px;
+    position: relative;
 }
 
 .pill-icon {
     color: var(--danger);
     font-size: 1.2rem;
     margin-left: 10px;
+}
+
+.pill-icon-origin {
+    color: var(--success);
 }
 
 .search-main input {
@@ -386,9 +391,9 @@ body {
 
 .suggestions-list {
     position: absolute;
-    top: 60px;
-    left: 10px;
-    right: 10px;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
     background: rgba(17, 34, 64, 0.95);
     backdrop-filter: blur(10px);
     border-radius: 15px;
@@ -397,6 +402,48 @@ body {
     overflow-y: auto;
     z-index: 1001;
     display: none;
+}
+
+.bench-controls {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+}
+
+.bench-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.bench-controls input[type="number"] {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-primary);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 6px 8px;
+    border-radius: 6px;
+    width: 70px;
+    font-size: 0.8rem;
+    outline: none;
+}
+
+.bench-controls input[type="number"]:focus {
+    border-color: var(--accent-color);
+}
+
+.bench-controls .pill-btn {
+    padding: 7px 18px;
+    font-size: 0.8rem;
+}
+
+.metrics-panel {
+    margin-top: 0 !important;
 }
 
 .suggestion-item {
@@ -697,4 +744,92 @@ body {
     0%   { box-shadow: 0 0 0 0 rgba(255,193,7,0.6); }
     70%  { box-shadow: 0 0 0 6px rgba(255,193,7,0); }
     100% { box-shadow: 0 0 0 0 rgba(255,193,7,0); }
+}
+
+/* ── Input clear (×) buttons ──────────────────────────────── */
+.input-clear {
+    background: transparent;
+    border: 0;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 4px 8px;
+    margin-right: 4px;
+    border-radius: 50%;
+    width: 26px; height: 26px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.75rem;
+    transition: background 0.15s, color 0.15s;
+    flex-shrink: 0;
+}
+.input-clear:hover {
+    background: rgba(255,255,255,0.08);
+    color: var(--text-primary);
+}
+.input-clear.hidden { display: none; }
+
+/* ── Benchmark floating button + modal ────────────────────── */
+.bench-toggle-btn {
+    position: absolute;
+    top: 18px;
+    right: 18px;
+    z-index: 1000;
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    background: var(--accent-color);
+    color: var(--bg-color);
+    border: none;
+    cursor: pointer;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.35), 0 0 0 0 rgba(100,255,218,0.5);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.05rem;
+    transition: transform 0.15s, box-shadow 0.15s;
+}
+.bench-toggle-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 18px rgba(0,0,0,0.45);
+}
+
+.bench-modal {
+    position: absolute;
+    top: 74px;
+    right: 18px;
+    width: 380px;
+    max-width: calc(100vw - 40px);
+    z-index: 1001;
+    transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.bench-modal.hidden {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-8px);
+}
+.bench-modal-card {
+    padding: 14px 16px;
+    background: rgba(17, 34, 64, 0.97);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    box-shadow: 0 12px 32px rgba(0,0,0,0.45);
+}
+.bench-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+.bench-close-btn {
+    background: transparent;
+    border: 0;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 4px;
+    width: 26px; height: 26px;
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.85rem;
+    transition: background 0.15s, color 0.15s;
+}
+.bench-close-btn:hover {
+    background: rgba(255,255,255,0.08);
+    color: var(--text-primary);
 }
