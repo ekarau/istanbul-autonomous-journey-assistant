@@ -1,8 +1,8 @@
 // src/perception/geo.js
 
-// Haversine formülü ile iki koordinasyon arası mesafe (km)
+// Calculates distance between two coordinates using Haversine formula (in km)
 export function haversineDistance(coord1, coord2) {
-  const R = 6371; // Dünya yarıçapı (km)
+  const R = 6371; // Earth radius in kilometers
 
   const toRad = (deg) => (deg * Math.PI) / 180;
 
@@ -24,16 +24,16 @@ export function haversineDistance(coord1, coord2) {
 }
 
 
-// Avrupa - Anadolu (intercontinental) kontrolü (çok basit yaklaşım)
+// Checks if route crosses between Europe and Asia (Istanbul-specific logic)
 export function isIntercontinental(coord1, coord2) {
-  // İstanbul için kaba sınır: boğazın batısı Avrupa, doğusu Anadolu
+  // Rough boundary: west of Bosphorus = Europe, east = Asia
   const isEurope = (coord) => coord.lng < 29;
 
   return isEurope(coord1) !== isEurope(coord2);
 }
 
 
-// Batı yakası yoğunluk (basit heuristic)
+// Determines if a coordinate is on the west side (used for traffic heuristics)
 export function isWestSide(coord) {
   return coord.lng < 28.8;
 }
