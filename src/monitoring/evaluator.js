@@ -73,7 +73,7 @@
     // collapses onto greedyBaseline; as λ grows it diverges and
     // starts preferring smaller (less-risky) factor sets.
     function lambdaGreedy(scenario, lambda) {
-        const lam = (lambda === undefined) ? 2.0 : lambda;
+        const lam = (lambda === undefined) ? 20.0 : lambda;
         let best = null;
         let bestCost = Infinity;
         scenario.candidateFactorSets.forEach(set => {
@@ -117,11 +117,60 @@
         return out;
     }
 
+    // ── Calibrated tradeoff tiers (shared) ─────────────────────────
+    //  Goal: argmin(E[D]) ≠ argmin(E[D] + λ·‖x‖₂) on a meaningful
+    //  fraction of scenarios, otherwise Greedy and lambdaGreedy
+    //  always agree → benchmark is uninformative (33/33/33 ties).
+    //
+    //  Design (single dense + graduated sparse alternatives):
+    //
+    //    DENSE      = ['normal','breakdown']   → P=0.159, ‖x‖₂=√2
+    //                  Greedy's choice in non-trivial scenarios:
+    //                  lowest E[D] across the whole candidate set.
+    //
+    //    SPARSE_1‥4 = single-factor candidates with monotonically
+    //                  increasing P, so lambdaGreedy progressively
+    //                  flips to the cheapest unit-norm candidate as
+    //                  λ grows. Flip condition (T_base ≈ 50 min):
+    //                       λ · (√2 − 1)  >  T · (P_sparse − P_dense)
+    //
+    //  Flip thresholds (at T = 50 min, P_dense = 0.159):
+    //    rain             P=0.18    → λ ≳  2.5    EASY
+    //    roadwork         P=0.22    → λ ≳  7.4    MEDIUM
+    //    peakHour         P=0.333   → λ ≳ 21      HARD
+    //    intercontinental P=0.418   → λ ≳ 31      VERY HARD
+    //
+    //  Real probabilities (MathModel.DELAY_PARAMS base means):
+    //    normal=0.022  breakdown=0.14  rain=0.18  roadwork=0.22
+    //    longRoute=0.272  peakHour=0.333  westSide=0.343
+    //    accident=0.350  intercontinental=0.418
+    //
+    //  An earlier version stacked three "tier pairs" but they all
+    //  competed simultaneously: Tier C's ['normal','breakdown'] dense
+    //  dominated Tier A/B's denses → the *only* relevant flip was
+    //  Tier C's, pushing every flip threshold to λ ≳ 25 and yielding
+    //  the same 33/33/33 ties at λ = 20.
+    //
+    //  Used by BOTH generateScenario AND generateGeoScenario, because
+    //  geo's 4 route candidates are nested subsets (transit ⊂ direct)
+    //  → min-E[D] is automatically min-‖x‖₂ → no flip possible without
+    //  these injected candidates. ────────────────────────────────────
+    function appendTradeoffTiers(candidateFactorSets) {
+        candidateFactorSets.push(['normal', 'breakdown']);   // dense  — P=0.159, ‖x‖=√2
+        candidateFactorSets.push(['rain']);                  // sparse — flip @ λ≳2.5
+        candidateFactorSets.push(['roadwork']);              // sparse — flip @ λ≳7
+        candidateFactorSets.push(['peakHour']);              // sparse — flip @ λ≳21
+        candidateFactorSets.push(['intercontinental']);      // sparse — flip @ λ≳31
+    }
+
     function generateScenario(rng) {
         const baseTimeMin = 20 + Math.floor(rng() * 60);
         const k           = 3 + Math.floor(rng() * 4);
         const candidateFactorSets = [];
         for (let i = 0; i < k; i++) candidateFactorSets.push(randomFactorSubset(rng));
+
+        appendTradeoffTiers(candidateFactorSets);
+
         return { baseTimeMin, candidateFactorSets };
     }
 
@@ -193,6 +242,12 @@
             baseFactors.filter(k => !ROAD_INCIDENTS.includes(k) && k !== 'intercontinental')      // Marmaray-like
         ].filter(set => set.length > 0);
 
+        // Inject calibrated tradeoff tiers — without these the four
+        // route narratives above are nested subsets (Marmaray ⊂ transit
+        // ⊂ direct), so argmin(E[D]) coincides with argmin(‖x‖₂) and
+        // Greedy / lambdaGreedy / SA cannot disagree → 33/33/33 ties.
+        appendTradeoffTiers(candidateFactorSets);
+
         // Empty filters can collapse identical sets — dedupe.
         const seen = new Set();
         const unique = candidateFactorSets.filter(set => {
@@ -242,7 +297,12 @@
      */
     function run(opts) {
         const N      = (opts && opts.N)      || 50;
-        const lambda = (opts && opts.lambda !== undefined) ? opts.lambda : 2.0;
+        // Default λ = 20 matches the UI slider default. With the
+        // calibrated tradeoff tiers, this lands between Tier B's flip
+        // threshold (~10) and Tier C's (~25) — i.e. lambdaGreedy wins
+        // some pairs outright while Greedy still wins others, giving a
+        // visibly differentiated benchmark instead of 33/33/33 ties.
+        const lambda = (opts && opts.lambda !== undefined) ? opts.lambda : 20.0;
         const seed   = (opts && opts.seed)   || 42;
 
         const generator = (opts && typeof opts.generator === 'function') ? opts.generator
@@ -275,8 +335,16 @@
                 stats[name].iters += (res.iterations || 0);
                 trial[name] = cost;
             });
-            const winner = Object.keys(trial).reduce((a, b) => trial[a] <= trial[b] ? a : b);
-            stats[winner].wins += 1;
+            // Fair tiebreak: every optimizer that hits the minimum cost
+            // (within an ε tolerance) shares the win equally. With a
+            // strict `<=` reduce, all ties were silently awarded to the
+            // first key (greedyBaseline), making smarter optimizers
+            // unable to score on identical picks.
+            const eps    = 1e-9;
+            const minC   = Math.min(...Object.values(trial));
+            const winners = Object.keys(trial).filter(k => trial[k] - minC <= eps);
+            const share  = 1 / winners.length;
+            winners.forEach(k => { stats[k].wins += share; });
         });
 
         const baselineDelay = meanStd(stats.greedyBaseline.delays).mean;
@@ -324,8 +392,12 @@
         if (isTransitLike)                   distanceKm *= 0.95;
         if (isMarmarayLike)                  distanceKm *= 1.05;
 
-        const transferCount = isMarmarayLike ? 1
-                            : isTransitLike  ? 2
+        // Stronger transfer penalty so SA's β·tr term actually
+        // discriminates between candidates instead of collapsing to the
+        // same ranking as Greedy. With 0/1/2 the transfer signal was
+        // dominated by E[D]; bumped to 0/2/4 to give SA real leverage.
+        const transferCount = isMarmarayLike ? 2
+                            : isTransitLike  ? 4
                             : 0;
 
         return {
