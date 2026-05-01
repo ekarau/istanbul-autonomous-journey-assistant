@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <title>Istanbul Autonomous Journey Assistant</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Outfit:wght@300;400;600&display=swap"
+        rel="stylesheet">
+</head>
+
+<body>
+    <div class="app-container">
+        <main class="map-view">
+            <div class="map-overlay top-bar">
+                <div class="search-pill">
+                    <div class="pill-modes">
+                        <div class="pill-mode active" data-mode="best" title="Best"><i
+                                class="fa-solid fa-wand-magic-sparkles"></i></div>
+                        <div class="pill-mode" data-mode="car" title="Car"><i class="fa-solid fa-car"></i></div>
+                        <div class="pill-mode" data-mode="transit" title="Public Transit"><i
+                                class="fa-solid fa-train-subway"></i></div>
+                        <div class="pill-mode" data-mode="walk" title="Walking"><i
+                                class="fa-solid fa-person-walking"></i></div>
+                    </div>
+                    <div class="search-main">
+                        <i class="fa-solid fa-circle-dot pill-icon pill-icon-origin"></i>
+                        <input type="text" placeholder="Starting point (or use GPS)" id="origin-input"
+                            autocomplete="off">
+                        <button id="origin-clear" class="input-clear hidden" title="Clear origin"
+                            aria-label="Clear origin">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                        <div id="origin-suggestions" class="suggestions-list"></div>
+                    </div>
+                    <div class="search-main">
+                        <i class="fa-solid fa-location-dot pill-icon"></i>
+                        <input type="text" placeholder="Where would you like to go?" id="destination-input"
+                            autocomplete="off">
+                        <button id="dest-clear" class="input-clear hidden" title="Clear destination"
+                            aria-label="Clear destination">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                        <button id="search-btn" class="pill-btn">Analyze Route</button>
+                        <div id="suggestions" class="suggestions-list"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="map"></div>
+
+            <button id="bench-toggle-btn" class="bench-toggle-btn" title="Optimizer Benchmark"
+                aria-label="Open Optimizer Benchmark">
+                <i class="fa-solid fa-flask"></i>
+            </button>
+
+            <div id="bench-modal" class="bench-modal hidden" role="dialog" aria-modal="false">
+                <div class="bench-modal-card card">
+                    <div class="bench-modal-header">
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <i class="fa-solid fa-flask" style="color:var(--accent-color)"></i>
+                            <span style="font-size:0.9rem;font-weight:700;">Optimizer Benchmark</span>
+                        </div>
+                        <button id="bench-close-btn" class="bench-close-btn" aria-label="Close benchmark">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                    </div>
+                    <div class="bench-controls">
+                        <label class="bench-label">N <input type="number" id="bench-n" value="50" min="5"
+                                max="500"></label>
+                        <label class="bench-label">λ <input type="number" id="bench-lambda" value="20" step="1"
+                                min="0"></label>
+                        <button id="bench-btn" class="pill-btn">Run</button>
+                    </div>
+                    <div id="bench-output"></div>
+                </div>
+            </div>
+
+            <div class="map-overlay bottom-info">
+                <div class="status-badge" id="traffic-status-badge">
+                    <span class="pulse-red"></span> Live Traffic: Calculating…
+                </div>
+                <button id="locate-btn" class="floating-btn" title="Find My Location">
+                    <i class="fa-solid fa-location-crosshairs"></i>
+                </button>
+            </div>
+        </main>
+
+        <aside class="side-panel">
+            <header class="ai-header-main">
+                <div class="ai-logo"><i class="fa-solid fa-robot"></i></div>
+                <div class="ai-title">
+                    <h2>AI Journey Assistant</h2>
+                    <p>Autonomous Decision Support</p>
+                </div>
+            </header>
+
+            <section class="ai-reasoning card">
+                <div class="ai-header">
+                    <i class="fa-solid fa-brain"></i>
+                    <span>AI Decision Logic</span>
+                </div>
+                <div id="ai-status" class="status-text">Waiting for destination...</div>
+            </section>
+
+            <section class="stats-grid">
+                <div class="stat-card card">
+                    <span class="stat-label">Delay Probability</span>
+                    <div class="progress-container">
+                        <div class="progress-bar" id="delay-bar" style="width: 0%"></div>
+                    </div>
+                    <span class="stat-value" id="delay-val">0%</span>
+                </div>
+                <div class="stat-card card">
+                    <span class="stat-label">AI Confidence Score</span>
+                    <div class="stars" id="confidence-stars">
+                        <i class="fa-regular fa-star"></i>
+                        <i class="fa-regular fa-star"></i>
+                        <i class="fa-regular fa-star"></i>
+                        <i class="fa-regular fa-star"></i>
+                        <i class="fa-regular fa-star"></i>
+                    </div>
+                    <span class="stat-value" id="confidence-val">0%</span>
+                </div>
+            </section>
+
+            <section class="route-options">
+                <h3>Suggested Routes</h3>
+                <div id="routes-list"></div>
+            </section>
+
+            <footer class="ai-footer">
+                <p>© 2026 Istanbul Autonomous Systems Project</p>
+            </footer>
+        </aside>
+    </div>
+    <!--
+        Script loading order (IMPORTANT — each module depends on those above it):
+        1. delay_factors.js  — Single source of truth for all constants (window.DELAY_FACTORS_DATA)
+        2. Perception layer  — geo, incidents, peak_hour (read from delay_factors)
+        3. math_model.js     — reads window.DELAY_FACTORS for DELAY_PARAMS
+        4. Optimization      — optimizer, baseline_greedy, simulated_annealing
+        5. Monitoring        — evaluator, metrics_panel
+        6. agent.js          — main decision loop (reads all modules above via window.*)
+
+        NOTE: public/app.js has been retired to archive/app.js.bak
+        It was a dead duplicate of agent.js that was never loaded here;
+        see docs/architecture.md and the evaluation report §4.2 Defect 1.
+    -->
+    <!-- Layer 1 — Data constants (single source of truth) -->
+    <script src="../src/data/delay_factors.js"></script>
+
+    <!-- Layer 2 — Perception -->
+    <script src="../src/perception/geo.js"></script>
+    <script src="../src/perception/incidents.js"></script>
+    <script src="../src/perception/peak_hour.js"></script>
+    <script src="../src/decision/route_decision.js"></script>
+
+    <!-- Layer 3 — Mathematical model -->
+    <script src="../src/math/math_model.js"></script>
+    <script src="../src/math/linear_algebra.js"></script>
+    <script src="../src/math/logic_engine.js"></script>
+    <script src="../src/math/probability.js"></script>
+
+    <!-- Layer 4 — Optimization -->
+    <script src="../src/optimization/optimizer.js"></script>
+    <script src="../src/optimization/baseline_greedy.js"></script>
+    <script src="../src/optimization/simulated_annealing.js"></script>
+    <script src="../src/optimization/ga_route_planner.js"></script>
+
+    <!-- Layer 5 — Monitoring & evaluation -->
+    <script src="../src/monitoring/evaluator.js"></script>
+    <script src="../src/monitoring/metrics_panel.js"></script>
+
+    <!-- Layer 6 — Agent (main decision loop) -->
+    <script src="../src/decision/agent.js"></script>
+</body>
+
+</html>
