@@ -1,19 +1,16 @@
-
 document.addEventListener('DOMContentLoaded', async function () {
-
 
     // ============================================================
     //  PROBABILISTIC DELAY MODEL  —  Data & Simulation Layer
     //  COE017 Project | Data & Simulation Engineer Module
     // ============================================================
 
-
     const _df = (window.DELAY_FACTORS_DATA || {});
 
     // ============================================================
     //  BACKEND INTEGRATION LAYER
     // ============================================================
-    const API_BASE = "http://127.0.0.1:5000";
+    const API_BASE = "https://istanbul-autonomous-journey-assistant.onrender.com";
     let BACKEND_INCIDENT_ZONES = null;
 
     async function fetchBackendJSON(path, options = {}) {
@@ -112,14 +109,12 @@ document.addEventListener('DOMContentLoaded', async function () {
             : (BACKEND_INCIDENT_ZONES || _df.INCIDENT_ZONE_DEFAULTS || []);
     }
 
-
     function gaussianRandom() {
         let u = 0, v = 0;
         while (u === 0) u = Math.random();
         while (v === 0) v = Math.random();
         return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
     }
-
 
     function sampleFactor(key) {
         const f = DELAY_FACTORS[key];
@@ -129,8 +124,6 @@ document.addEventListener('DOMContentLoaded', async function () {
         return Math.max(0, Math.min(1, sampled));
     }
 
-
-
     function combinedDelayProbability(activeFactorKeys) {
         let complement = 1.0;
         activeFactorKeys.forEach(key => {
@@ -139,35 +132,29 @@ document.addEventListener('DOMContentLoaded', async function () {
         return Math.max(0, Math.min(1, 1 - complement));
     }
 
-
     function getActiveIncidentsOnRoute(startLat, startLon, endLat, endLon) {
         const midLat = (startLat + endLat) / 2;
         const midLon = (startLon + endLon) / 2;
         const active = [];
-
 
         getIncidentZones().forEach(zone => {
             const dToStart = calculateDistance(startLat, startLon, zone.lat, zone.lon);
             const dToEnd   = calculateDistance(endLat, endLon, zone.lat, zone.lon);
             const dToMid   = calculateDistance(midLat, midLon, zone.lat, zone.lon);
 
-
             if (Math.min(dToStart, dToEnd, dToMid) <= zone.radius) {
                 active.push(zone);
             }
         });
 
-
         return active;
     }
-
 
     function isPeakHour() {
         const now = new Date();
         const total = now.getHours() * 60 + now.getMinutes();
         return (total >= 450 && total <= 570) || (total >= 1020 && total <= 1200);
     }
-
 
     function computeRouteRisk(ctx) {
         const activeFactorKeys = [];
@@ -176,12 +163,10 @@ document.addEventListener('DOMContentLoaded', async function () {
             activeFactorKeys.push('normal');
         }
 
-
         if (ctx.isIntercontinental) activeFactorKeys.push('intercontinental');
         if (ctx.isWestSide) activeFactorKeys.push('westSide');
         if (ctx.distance > 15) activeFactorKeys.push('longRoute');
         if (isPeakHour()) activeFactorKeys.push('peakHour');
-
 
         ctx.activeIncidents.forEach(inc => {
             if (!activeFactorKeys.includes(inc.factorKey)) {
@@ -191,14 +176,12 @@ document.addEventListener('DOMContentLoaded', async function () {
 
         let delayProb = combinedDelayProbability(activeFactorKeys);
 
-
         if (ctx.isTransit) {
             const roadKeys = ['accident', 'breakdown', 'roadwork', 'westSide'];
             const roadContrib = combinedDelayProbability(activeFactorKeys.filter(k => roadKeys.includes(k)));
             delayProb -= roadContrib * TRANSIT_INSULATION;
             delayProb = Math.max(0, delayProb);
         }
-
 
         let conf = CONFIDENCE_BASE;
         conf -= ctx.activeIncidents.length * CONFIDENCE_PER_INCIDENT;
@@ -211,11 +194,9 @@ document.addEventListener('DOMContentLoaded', async function () {
         return {
             delay: Math.round(delayProb * 100),
             confidence: Math.round(conf * 100),
-
             activeFactors: activeFactorKeys
         };
     }
-
 
     function buildInferenceMessage(ctx, risk) {
         const { distance, isIntercontinental, isWestSide, activeIncidents } = ctx;
@@ -235,10 +216,8 @@ document.addEventListener('DOMContentLoaded', async function () {
             parts.push(`Intercontinental route via Bosphorus detected.`);
         }
 
-
         if (isWestSide) parts.push(`Heavy E-5 / TEM congestion zone. Metrobus preferred.`);
         if (peak) parts.push(`Peak-hour window active (${timeStr}).`);
-
 
         activeIncidents.forEach(inc => {
             const impact = Math.round(sampleFactor(inc.factorKey) * 100);
@@ -248,7 +227,6 @@ document.addEventListener('DOMContentLoaded', async function () {
         parts.push(`Route: ${distance.toFixed(1)} km | Delay probability: ${risk.delay}% | Confidence: ${risk.confidence}%`);
         return parts.join(' ').trim();
     }
-
 
     const map = L.map('map', { center: [41.0082, 28.9784], zoom: 12, zoomControl: false });
 
@@ -277,7 +255,6 @@ document.addEventListener('DOMContentLoaded', async function () {
 
         el.innerHTML = "";
 
-
         for (let i = 0; i < text.length; i++) {
             el.innerHTML += text.charAt(i);
             await new Promise(r => setTimeout(r, 18));
@@ -288,7 +265,6 @@ document.addEventListener('DOMContentLoaded', async function () {
         const R = 6371;
         const dLat = (lat2 - lat1) * Math.PI / 180;
         const dLon = (lon2 - lon1) * Math.PI / 180;
-
 
         const a = Math.sin(dLat / 2) ** 2 +
             Math.cos(lat1 * Math.PI / 180) *
@@ -319,13 +295,11 @@ document.addEventListener('DOMContentLoaded', async function () {
             const a = BOSPHORUS_KNOTS[i];
             const b = BOSPHORUS_KNOTS[i + 1];
 
-
             if (lat >= a[0] && lat <= b[0]) {
                 const t = (lat - a[0]) / (b[0] - a[0]);
                 return a[1] + t * (b[1] - a[1]);
             }
         }
-
 
         return last[1];
     }
@@ -334,7 +308,6 @@ document.addEventListener('DOMContentLoaded', async function () {
         return lng < bosphorusMidLng(lat);
     }
 
-
     function isIntercontinentalTrip(aLat, aLng, bLat, bLng) {
         return isEuropeanSide(aLat, aLng) !== isEuropeanSide(bLat, bLng);
     }
@@ -342,7 +315,6 @@ document.addEventListener('DOMContentLoaded', async function () {
     const accidentIcon = L.divIcon({
         className: 'custom-div-icon',
         html: "<div style='color:#FF4D4D;font-size:24px;text-shadow:0 0 10px rgba(255,77,77,0.5)'><i class='fa-solid fa-triangle-exclamation'></i></div>",
-
         iconSize: [30, 30],
         iconAnchor: [15, 15]
     });
@@ -405,7 +377,6 @@ document.addEventListener('DOMContentLoaded', async function () {
                     if (data.length > 0) {
                         listEl.innerHTML = '';
 
-
                         data.forEach(item => {
                             const div = document.createElement('div');
                             div.className = 'suggestion-item';
@@ -417,10 +388,8 @@ document.addEventListener('DOMContentLoaded', async function () {
                                 onPick(parseFloat(item.lat), parseFloat(item.lon), div.innerText);
                             });
 
-
                             listEl.appendChild(div);
                         });
-
 
                         listEl.style.display = 'block';
                     } else {
@@ -437,19 +406,15 @@ document.addEventListener('DOMContentLoaded', async function () {
             setTimeout(() => {
                 listEl.style.display = 'none';
             }, 200);
-
         });
     }
 
     wireAutocomplete(destinationInput, suggestionsList, prepareDestination);
-
     wireAutocomplete(originInput, originSuggestions, prepareOrigin);
-
 
     function prepareDestination(lat, lon, name) {
         window.selectedLat = lat;
         window.selectedLon = lon;
-
 
         if (window.targetMarker) map.removeLayer(window.targetMarker);
 
@@ -465,13 +430,11 @@ document.addEventListener('DOMContentLoaded', async function () {
         if (typeof window.syncClearVisibility === 'function') {
             window.syncClearVisibility();
         }
-
     }
 
     function prepareOrigin(lat, lon, name) {
         window.originLat = lat;
         window.originLon = lon;
-
 
         if (window.originMarker) map.removeLayer(window.originMarker);
 
@@ -494,12 +457,10 @@ document.addEventListener('DOMContentLoaded', async function () {
         }
     }
 
-
     async function reverseGeocode(lat, lon) {
         try {
             const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=16`);
             const data = await res.json();
-
 
             if (data && data.display_name) {
                 return data.display_name.split(',').slice(0, 2).join(',').trim();
@@ -513,14 +474,12 @@ document.addEventListener('DOMContentLoaded', async function () {
         const lat = e.latlng.lat;
         const lon = e.latlng.lng;
 
-
         const html = `
             <div style="display:flex;flex-direction:column;gap:6px;font-family:Inter,sans-serif;min-width:170px;">
                 <div style="font-size:0.7rem;color:#8892B0;letter-spacing:0.5px;text-transform:uppercase;">
                     ${lat.toFixed(4)}, ${lon.toFixed(4)}
                 </div>
                 <button class="map-pick-btn" data-pick="origin"
-
                         style="background:#2ECC71;border:0;color:#0A192F;padding:7px 10px;border-radius:6px;font-weight:700;cursor:pointer;font-size:0.78rem;text-align:left;">
                     <i class="fa-solid fa-circle-dot"></i> &nbsp;Set as Origin
                 </button>
@@ -530,23 +489,19 @@ document.addEventListener('DOMContentLoaded', async function () {
                 </button>
             </div>`;
 
-
         const popup = L.popup({ closeButton: true, autoPan: true })
             .setLatLng(e.latlng)
             .setContent(html)
             .openOn(map);
 
-
         setTimeout(() => {
             const node = popup.getElement();
             if (!node) return;
-
 
             node.querySelectorAll('.map-pick-btn').forEach(btn => {
                 btn.addEventListener('click', async () => {
                     const pick = btn.dataset.pick;
                     map.closePopup();
-
 
                     const name = await reverseGeocode(lat, lon);
 
@@ -555,12 +510,10 @@ document.addEventListener('DOMContentLoaded', async function () {
                     } else {
                         prepareDestination(lat, lon, name);
                     }
-
                 });
             });
         }, 30);
     });
-
 
     const searchBtn = document.getElementById('search-btn');
 
@@ -629,12 +582,10 @@ document.addEventListener('DOMContentLoaded', async function () {
 
     window.searchManually = searchManually;
 
-
     function resolveStart() {
         if (window.originLat != null && window.originLon != null) {
             return { lat: window.originLat, lng: window.originLon };
         }
-
 
         if (window.userMarker) {
             return window.userMarker.getLatLng();
@@ -664,56 +615,55 @@ document.addEventListener('DOMContentLoaded', async function () {
     }
 
     async function simulateAIDecision(tLat, tLon) {
-    const start = resolveStart();
-    if (!start) return;
-    document.getElementById("ai-status").innerHTML = "Analyzing route with backend AI...";
+        const start = resolveStart();
+        if (!start) return;
 
-await new Promise(resolve => setTimeout(resolve, 700));
+        document.getElementById("ai-status").innerHTML = "Analyzing route with backend AI...";
 
-    
-    try {
-        const res = await fetch(`${API_BASE}/api/analyze`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                route: `${originInput.value || "Origin"} → ${destinationInput.value || "Destination"}`,
-                startLat: start.lat,
-                startLon: start.lng,
-                targetLat: tLat,
-                targetLon: tLon
-            })
-        });
+        await new Promise(resolve => setTimeout(resolve, 700));
 
-        const data = await res.json();
+        try {
+            const res = await fetch(`${API_BASE}/api/analyze`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    route: `${originInput.value || "Origin"} → ${destinationInput.value || "Destination"}`,
+                    startLat: start.lat,
+                    startLon: start.lng,
+                    targetLat: tLat,
+                    targetLon: tLon
+                })
+            });
 
-        console.log("BACKEND RESULT:", data);
-        document.getElementById("ai-status").innerHTML = `
-    <b>Backend AI Sonucu:</b><br>
-    ${data.aiInference}<br><br>
-    <b>Gecikme Riski:</b> %${data.delayPercent}<br>
-    <b>Güven:</b> %${data.confidence}<br>
-    <b>Tahmini Gecikme:</b> ${data.expectedDelay} dk
-`;
+            const data = await res.json();
 
-updateStats(data.delayPercent, data.confidence);
-updateTrafficBadge(data.delayPercent);
+            console.log("BACKEND RESULT:", data);
 
-        
+            if (data && (data.aiInference || data.delayPercent || data.confidence || data.expectedDelay)) {
+                document.getElementById("ai-status").innerHTML = `
+                    <b>Backend AI Sonucu:</b><br>
+                    ${data.aiInference || "Backend route analysis completed."}<br><br>
+                    <b>Gecikme Riski:</b> %${data.delayPercent ?? "-"}<br>
+                    <b>Güven:</b> %${data.confidence ?? "-"}<br>
+                    <b>Tahmini Gecikme:</b> ${data.expectedDelay ?? "-"} dk
+                `;
 
-  } catch (e) {
-    console.log("Backend çalışmadı, fallback çalışıyor");
-}
+                if (typeof data.delayPercent === "number" && typeof data.confidence === "number") {
+                    updateStats(data.delayPercent, data.confidence);
+                    updateTrafficBadge(data.delayPercent);
+                }
+            }
 
-    
-
+        } catch (e) {
+            console.log("Backend çalışmadı, fallback çalışıyor", e);
+        }
 
         const distance = calculateDistance(start.lat, start.lng, tLat, tLon);
         const isIntercontinental = isIntercontinentalTrip(start.lat, start.lng, tLat, tLon);
         const isWestSide = start.lng < 28.8 && tLon < 28.9;
         const activeIncidents = getActiveIncidentsOnRoute(start.lat, start.lng, tLat, tLon);
-
 
         const routeCtx = {
             distance,
@@ -757,16 +707,13 @@ updateTrafficBadge(data.delayPercent);
             });
         }
 
-
         await window.typeWriter(
             `AI analyzing ${distance.toFixed(1)} km route… scanning ${activeIncidents.length} incident zone(s)…`,
             'ai-status'
         );
 
-
         updateStats(risk.delay, risk.confidence);
         updateTrafficBadge(risk.delay);
-
 
         setTimeout(async () => {
             const msg = buildInferenceMessage(routeCtx, risk);
@@ -780,7 +727,6 @@ updateTrafficBadge(data.delayPercent);
     }
 
     function drawDualRoutes(start, end) {
-
         if (window.routePath) map.removeLayer(window.routePath);
         if (window.altRoutePath) map.removeLayer(window.altRoutePath);
 
@@ -821,7 +767,6 @@ updateTrafficBadge(data.delayPercent);
             }
         }, 20);
 
-
         map.fitBounds(window.routePath.getBounds(), { padding: [80, 80] });
     }
 
@@ -833,7 +778,6 @@ updateTrafficBadge(data.delayPercent);
             btn.classList.add('active');
             currentMode = btn.dataset.mode;
 
-
             if (window.selectedLat) {
                 const start = resolveStart();
                 if (!start) return;
@@ -842,7 +786,6 @@ updateTrafficBadge(data.delayPercent);
                 const isI = isIntercontinentalTrip(start.lat, start.lng, window.selectedLat, window.selectedLon);
                 const isW = start.lng < 28.8 && window.selectedLon < 28.9;
                 const incs = getActiveIncidentsOnRoute(start.lat, start.lng, window.selectedLat, window.selectedLon);
-
 
                 showContextRoutes(isI, isW, dist, incs);
             }
@@ -878,12 +821,10 @@ updateTrafficBadge(data.delayPercent);
         });
 
         const carDelayMin = Math.round(carTime * (carRisk.delay / 100));
-
         const transitDelayMin = Math.round(transitTime * (transitRisk.delay / 100));
 
         const allRoutes = [
             {
-
                 mode: 'car',
                 name: "via E80 Road",
                 desc: `High-speed connection. Expected delay: +${carDelayMin} min. Congestion at bridge exits.`,
@@ -936,7 +877,6 @@ updateTrafficBadge(data.delayPercent);
         let geoFiltered = isInter ? allRoutes : allRoutes.filter(r => r.name !== 'via Marmaray Line');
         let filtered = currentMode === 'best' ? geoFiltered : geoFiltered.filter(r => r.mode === currentMode);
 
-
         if (filtered.length === 0) {
             list.innerHTML = `<div class="status-msg">No suitable routes for this mode.</div>`;
             return;
@@ -961,7 +901,6 @@ updateTrafficBadge(data.delayPercent);
         `).join('');
 
         const best = filtered[0];
-
 
         updateMapPath(best.pathOffset, best.color);
         updateStats(best.delay, best.conf);
@@ -988,22 +927,18 @@ updateTrafficBadge(data.delayPercent);
             baseKeys.push('peakHour');
         }
 
-
         if (baseKeys.length === 0) baseKeys.push('normal');
 
         window.SUGGESTED_ROUTES = filtered.map(r => {
             let keys = baseKeys.slice();
 
-
             if (r.mode === 'transit') {
                 keys = keys.filter(k => k !== 'accident' && k !== 'roadwork');
-
 
                 if (r.name.toLowerCase().includes('marmaray')) {
                     keys = keys.filter(k => k !== 'intercontinental' && k !== 'breakdown');
                 }
             }
-
 
             if (keys.length === 0) keys = ['normal'];
 
@@ -1012,7 +947,6 @@ updateTrafficBadge(data.delayPercent);
                 activeKeys: keys,
                 baseTimeMin: r.total,
                 distanceKm: parseFloat(r.dist),
-
                 transferCount: r.mode === 'transit'
                     ? (r.name.toLowerCase().includes('marmaray') ? 1 : 2)
                     : 0
@@ -1020,7 +954,6 @@ updateTrafficBadge(data.delayPercent);
         });
 
         if (window.Optimizer && typeof window.Optimizer.appendOptimizerPanel === 'function') {
-
             try {
                 window.Optimizer.appendOptimizerPanel();
             } catch (e) {
@@ -1051,12 +984,10 @@ updateTrafficBadge(data.delayPercent);
         const list = document.getElementById('routes-list');
         if (!list) return;
 
-
         const m = window.lastMathResult;
 
         const severityColor = ['', '#2ECC71', '#FFA500', '#FF4D4D'];
         const severityLabel = ['', 'INFO', 'WARNING', 'CRITICAL'];
-
 
         const conclusionHTML = m.logicResult.conclusions.length === 0 ? '' : (() => {
             const baseFacts = new Set(
@@ -1085,7 +1016,6 @@ updateTrafficBadge(data.delayPercent);
                     </div>`;
             }).join('');
         })();
-
 
         const panel = document.createElement('div');
         panel.className = 'card';
@@ -1119,7 +1049,6 @@ updateTrafficBadge(data.delayPercent);
                 <span style="color:var(--text-primary);font-weight:600;">P(delay)</span>: ${(m.probabilityResult.prob * 100).toFixed(1)}%
             </div>
 
-
             <div style="font-size:0.7rem;color:var(--text-secondary);font-weight:600;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px;">
                 Logic Engine
                 <span style="font-size:0.62rem;font-weight:400;text-transform:none;margin-left:6px;color:${m.logicResult.engine === 'fixpoint' ? '#818CF8' : '#64748b'};">
@@ -1131,12 +1060,10 @@ updateTrafficBadge(data.delayPercent);
 
             ${conclusionHTML || '<div style="font-size:0.72rem;color:var(--text-secondary);padding:4px 0;">No rules fired — low risk state.</div>'}
 
-
             <div style="margin-top:10px;font-size:0.65rem;color:rgba(255,255,255,0.2);text-align:right;">
                 Blended: α=0.70 × P_union + 0.30 × w·x
             </div>
         `;
-
 
         list.appendChild(panel);
     }
@@ -1185,13 +1112,11 @@ updateTrafficBadge(data.delayPercent);
         let html = "";
         const filled = Math.floor(confidence / 20);
 
-
         for (let i = 1; i <= 5; i++) {
             html += i <= filled
                 ? '<i class="fa-solid fa-star" style="color:#FFD700"></i>'
                 : '<i class="fa-regular fa-star"></i>';
         }
-
 
         if (confidence > 90) {
             html += ' <span class="verified">VERIFIED</span>';
@@ -1264,7 +1189,6 @@ updateTrafficBadge(data.delayPercent);
                 iconAnchor: [16, 16]
             });
 
-
             L.marker([inc.lat, inc.lon], { icon: customIcon })
                 .addTo(map)
                 .bindPopup(
@@ -1277,7 +1201,6 @@ updateTrafficBadge(data.delayPercent);
 
     initMapIncidents();
 
-
     const benchBtn = document.getElementById('bench-btn');
 
     if (benchBtn && window.Evaluator && window.MetricsPanel) {
@@ -1288,7 +1211,6 @@ updateTrafficBadge(data.delayPercent);
 
             window.MetricsPanel.mount(target);
             window.MetricsPanel.reset();
-
 
             const rows = window.Evaluator.run({
                 N,
@@ -1301,19 +1223,16 @@ updateTrafficBadge(data.delayPercent);
         });
     }
 
-
     const benchToggle = document.getElementById('bench-toggle-btn');
     const benchModal = document.getElementById('bench-modal');
     const benchClose = document.getElementById('bench-close-btn');
 
     if (benchToggle && benchModal) {
         benchToggle.addEventListener('click', ev => {
-
             ev.stopPropagation();
             benchModal.classList.toggle('hidden');
         });
     }
-
 
     if (benchClose && benchModal) {
         benchClose.addEventListener('click', () => {
@@ -1408,7 +1327,6 @@ updateTrafficBadge(data.delayPercent);
             el.addEventListener('input', syncClearVisibility);
         }
     });
-
 
     syncClearVisibility();
 });
