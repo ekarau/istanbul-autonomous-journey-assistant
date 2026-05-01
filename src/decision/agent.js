@@ -532,7 +532,11 @@ document.addEventListener('DOMContentLoaded', function () {
         activeIncidents.forEach(inc => {
             if (!activeKeys.includes(inc.factorKey)) activeKeys.push(inc.factorKey);
         });
-        const baseCarTime = Math.round((distance / 52) * 60 + 5);   // IBB daily weighted avg 52 km/h
+        // IBB Saatlik Trafik Verisi — speed varies by time of day
+        // Morning rush 07:00-10:00: 51.7 km/h → 49, Evening rush 17:00-20:00: 48.8 → 47, Off-peak: 65
+        const _hour = new Date().getHours();
+        const _spd  = (_hour >= 7 && _hour < 10) ? 49 : (_hour >= 17 && _hour < 20) ? 47 : 65;
+        const baseCarTime = Math.round((distance / _spd) * 60 + 5);
         const routeVectors = [
             MathModel.buildFeatureVector(activeKeys),
             MathModel.buildFeatureVector(activeKeys.filter(k => k !== 'westSide')),
@@ -611,8 +615,12 @@ document.addEventListener('DOMContentLoaded', function () {
         //   Evening rush 17:00-19:00: 48.8 km/h  ← worst case
         //   Daily weighted average  : ~52 km/h
         // Transit: İETT metrobüs avg ~45 km/h, metro ~55 km/h → mixed ~40 km/h
-        const carTime     = Math.round((distance / 52) * 60 + 5);   // IBB daily weighted avg
-        const transitTime = Math.round((distance / 40) * 60 + 8);   // İETT mixed-mode avg
+        // IBB Saatlik Trafik Verisi — speed by hour
+        const _h    = new Date().getHours();
+        const _cSpd = (_h >= 7 && _h < 10) ? 49 : (_h >= 17 && _h < 20) ? 47 : 65;
+        const _tSpd = (_h >= 7 && _h < 10) ? 38 : (_h >= 17 && _h < 20) ? 36 : 52;
+        const carTime     = Math.round((distance / _cSpd) * 60 + 5);
+        const transitTime = Math.round((distance / _tSpd) * 60 + 8);
 
         const carRisk     = computeRouteRisk({ distance, isIntercontinental: isInter, isWestSide: isWest, activeIncidents, isTransit: false });
         const transitRisk = computeRouteRisk({ distance, isIntercontinental: isInter, isWestSide: isWest, activeIncidents, isTransit: true });
