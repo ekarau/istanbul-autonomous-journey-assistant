@@ -446,6 +446,32 @@
         // Run Hill Climbing every time a route is analyzed
         const r = runHillClimbing();
 
+        // Get current route's real delay from SUGGESTED_ROUTES for context row
+        const routes = window.SUGGESTED_ROUTES || [];
+        const bestRoute = routes[0];
+        let routeContextHtml = '';
+        if (bestRoute && window.MathModel) {
+            const delay = window.MathModel.expectedDelay(
+                bestRoute.timeMin || bestRoute.baseTimeMin || 30,
+                bestRoute.activeKeys || ['normal']
+            );
+            const prob = window.MathModel.probabilityUnion(bestRoute.activeKeys || ['normal']);
+            routeContextHtml = `
+            <div style="padding:6px 8px;background:rgba(100,255,218,0.05);
+                        border-radius:6px;margin-bottom:10px;
+                        border-left:2px solid var(--accent-color);">
+                <div style="font-size:0.62rem;color:var(--text-secondary);
+                            text-transform:uppercase;margin-bottom:3px;">Current Route</div>
+                <div style="font-size:0.75rem;color:var(--text-primary);font-weight:600;">
+                    ${bestRoute.name || 'Route'}</div>
+                <div style="font-size:0.68rem;color:var(--text-secondary);margin-top:2px;">
+                    E[D] = ${delay.E.toFixed(1)} min &nbsp;·&nbsp;
+                    P(delay) = ${(prob.prob * 100).toFixed(1)}% &nbsp;·&nbsp;
+                    σ = ${delay.sigma.toFixed(1)} min
+                </div>
+            </div>`;
+        }
+
         const rmseColor   = r.improvement > 0 ? '#2ECC71' : '#FFA500';
         const impSign     = r.improvement >= 0 ? '▼' : '▲';
 
@@ -479,6 +505,8 @@
                 <i class="fa-solid fa-chart-line" style="color:var(--accent-color)"></i>
                 <span style="font-size:0.8rem;">Optimization Report</span>
             </div>
+
+            ${routeContextHtml}
 
             <!-- Before / After metrics -->
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
@@ -538,7 +566,8 @@
 
             <div style="margin-top:8px;font-size:0.62rem;
                         color:rgba(255,255,255,0.2);text-align:right;">
-                Optimized w injected into window.Optimizer
+                Optimized w injected into window.Optimizer &nbsp;·&nbsp;
+                HC tunes global model weights (same across routes)
             </div>
         `;
 

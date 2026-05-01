@@ -77,8 +77,8 @@
      * @returns {{ cost: number, breakdown: object }}
      */
     function computeCost(route) {
-        const delay      = MathModel.expectedDelay(route.baseTimeMin, route.activeKeys);
-        const probResult = MathModel.probabilityUnion(route.activeKeys);
+        const delay      = window.MathModel.expectedDelay(route.baseTimeMin, route.activeKeys);
+        const probResult = window.MathModel.probabilityUnion(route.activeKeys);
 
         // Normalised terms (each ∈ [0, 1])
         const eDnorm   = Math.min(1, delay.E / (route.baseTimeMin * 2 || 60));
@@ -187,6 +187,30 @@
                 costHistory.push(Math.round(currentCost * 1000) / 1000);
                 tempHistory.push(Math.round(T * 100) / 100);
             }
+
+            // ── MetricsPanel live tick ────────────────────────────
+            //  FIX: MetricsPanel.update() was never called during the
+            //  SA loop — the panel only received data after the run
+            //  finished.  Now we push a live tick every 10 iterations
+            //  (100 ticks total for MAX_ITER=1000) so the sparkline
+            //  and E[D] / T cells update in real time during analysis.
+            if (iter % 10 === 0 &&
+                window.MetricsPanel &&
+                typeof window.MetricsPanel.update === 'function' &&
+                window.MetricsPanel.isMounted()) {
+
+                const bestDelay = window.MathModel.expectedDelay(
+                    routes[bestIdx].baseTimeMin,
+                    routes[bestIdx].activeKeys
+                );
+                window.MetricsPanel.update({
+                    E:        bestDelay.E,
+                    sigma:    bestDelay.sigma,
+                    iter:     iter,
+                    T:        Math.round(T * 100) / 100,
+                    bestCost: Math.round(bestCost * 1000) / 1000
+                });
+            }
         }
 
         // ── Final cost breakdown for best route ───────────────────
@@ -247,8 +271,63 @@
             return;
         }
 
+        // ── Mount MetricsPanel before run() so live ticks arrive ──
+        //  FIX: MetricsPanel was never mounted, so MetricsPanel.isMounted()
+        //  returned false and every update() call was silently skipped.
+        //  We mount it into the SA panel's own container now, reset any
+        //  stale state from a previous analysis, then call run() so the
+        //  live ticks populate the panel during the SA loop.
+        // FIX — mount MetricsPanel BEFORE run() so live ticks arrive.
+        //
+        //  Problem: saMetricsSlot was created, _mountMetrics() was defined,
+        //  but mount() was only called AFTER run() finished — meaning every
+        //  isMounted() check inside the SA loop returned false and all
+        //  live update() calls were silently dropped.
+        //
+        //  Solution: mount into a temporary off-screen div first so
+        //  isMounted() returns true during the loop. After run() builds
+        //  the panel HTML, move the slot into the real panel before
+        //  appending to the DOM — no visual flash, ticks work correctly.
+        const saMetricsSlot = document.createElement('div');
+        saMetricsSlot.id = 'sa-metrics-slot';
+
+        // Mount into an off-screen holder so isMounted() = true during run()
+        const _offscreen = document.createElement('div');
+        _offscreen.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none;';
+        _offscreen.appendChild(saMetricsSlot);
+        document.body.appendChild(_offscreen);
+
+        if (window.MetricsPanel && typeof window.MetricsPanel.mount === 'function') {
+            window.MetricsPanel.mount(saMetricsSlot);
+            window.MetricsPanel.reset();
+        }
+
         const r = run(routes);
-        if (!r) return;
+        if (!r) {
+            // clean up offscreen div before bailing
+            if (document.body.contains(_offscreen)) document.body.removeChild(_offscreen);
+            return;
+        }
+
+        // ── Final summary tick after loop completes ────────────
+        //  Push one last update with the definitive best values so
+        //  the panel always ends on the true optimum, not the last
+        //  mid-loop tick.
+        if (window.MetricsPanel &&
+            typeof window.MetricsPanel.update === 'function' &&
+            window.MetricsPanel.isMounted()) {
+            const finalDelay = window.MathModel.expectedDelay(
+                r.bestRoute.baseTimeMin,
+                r.bestRoute.activeKeys
+            );
+            window.MetricsPanel.update({
+                E:        finalDelay.E,
+                sigma:    finalDelay.sigma,
+                iter:     r.iterations,
+                T:        r.finalTemp,
+                bestCost: r.bestCost
+            });
+        }
 
         const impColor = r.improvement > 0 ? '#2ECC71' : '#FFA500';
 
@@ -326,6 +405,9 @@
             </div>
         `;
 
+        // Move slot from off-screen holder into the real panel, then clean up
+        panel.appendChild(saMetricsSlot);
+        document.body.removeChild(_offscreen);
         container.appendChild(panel);
     }
 

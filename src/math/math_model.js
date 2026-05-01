@@ -43,9 +43,12 @@
     'use strict';
 
     // ============================================================
-    //  FACTOR DEFINITIONS  (matches app.js DELAY_FACTORS)
-    //  base  = mean delay probability derived from IBB data
-    //  variance = σᵢ of the Gaussian noise term
+    //  FACTOR DEFINITIONS
+    //  FIX (Architecture §4.2 — Defect 3):
+    //  Values are now read from window.DELAY_FACTORS, which is
+    //  populated by src/data/delay_factors.js (loaded first in
+    //  index.html).  An inline fallback is kept so unit tests in
+    //  tests/math_unit_tests.html still work when loaded standalone.
     // ============================================================
 
     const FACTOR_INDEX = {
@@ -62,7 +65,9 @@
 
     const FACTOR_KEYS = Object.keys(FACTOR_INDEX); // length = 9 → vector dimension
 
-    const DELAY_PARAMS = {
+    // Read from single-source-of-truth delay_factors.js; fall back to
+    // inline values only when running standalone (e.g. unit test page).
+    const DELAY_PARAMS = (window.DELAY_FACTORS) || {
         accident:         { base: 0.350, variance: 0.060 },
         rain:             { base: 0.180, variance: 0.055 },
         roadwork:         { base: 0.220, variance: 0.065 },
@@ -404,10 +409,41 @@
         const delayStats        = expectedDelay(baseTimeMin, activeFactorKeys);
 
         // ── 3. Logic engine ────────────────────────────────────
-        const logicResult = runLogicEngine({
-            activeFactorKeys,
-            delayPercent: Math.round(probabilityResult.prob * 100)
-        });
+        //
+        //  FIX: Use the standalone fixpoint forward-chaining engine
+        //  (window.LogicEngine) when available.  It supports multi-step
+        //  chained inference (R1 → R8, R3+peak → R9 → R10, etc.).
+        //  Falls back to the original single-pass MathModel engine so
+        //  math_unit_tests.html still works without logic_engine.js.
+        //
+        //  Shape normalisation:
+        //    LogicEngine returns  { conclusions[], severity, facts[] }
+        //    runLogicEngine returns { conclusions[], maxSeverity }
+        //  Both are merged into a unified logicResult object below.
+        let logicResult;
+        if (window.LogicEngine && typeof window.LogicEngine.run === 'function') {
+            const leResult = window.LogicEngine.run({ activeFactorKeys });
+            // Normalise: expose both .severity and .maxSeverity for consumers
+            logicResult = {
+                conclusions: leResult.conclusions,
+                maxSeverity: leResult.severity,
+                severity:    leResult.severity,
+                facts:       leResult.facts,
+                engine:      'fixpoint'   // diagnostic flag
+            };
+        } else {
+            // Fallback — original single-pass Modus Ponens
+            const fallback = runLogicEngine({
+                activeFactorKeys,
+                delayPercent: Math.round(probabilityResult.prob * 100)
+            });
+            logicResult = {
+                ...fallback,
+                severity: fallback.maxSeverity,
+                facts:    activeFactorKeys,
+                engine:   'single-pass'
+            };
+        }
 
         // ── 4. Blended final score ─────────────────────────────
         //  final = α × P_union  +  (1−α) × linearScore
@@ -415,6 +451,19 @@
         const finalDelayPct = Math.min(100, Math.round(blended * 100));
 
         // ── 5. Human-readable summary lines ───────────────────
+        const engineTag = logicResult.engine === 'fixpoint'
+            ? '[LOGIC Fixpoint]'
+            : '[LOGIC Modus P.]';
+
+        // Distinguish base facts from chained conclusions
+        const baseFacts    = new Set(activeFactorKeys);
+        const chainedConcs = logicResult.conclusions.filter(
+            c => !baseFacts.has(c.conclusion)
+        );
+        const directConcs  = logicResult.conclusions.filter(
+            c => baseFacts.has(c.conclusion)
+        );
+
         const summaryLines = [
             `[LINEAR ALGEBRA]  Feature vector: x ∈ ℝ⁹, ‖x‖₂ = ${l2Risk.toFixed(3)}`,
             `[LINEAR ALGEBRA]  Weighted score (w·x): ${rawDot.toFixed(3)} → normalised: ${(linearScore * 100).toFixed(1)}%`,
@@ -422,9 +471,12 @@
             `[PROBABILITY]     E[D] = ${delayStats.E} min  |  σ[D] = ${delayStats.sigma} min`,
             `[PROBABILITY]     95% CI → [${delayStats.ciLow}, ${delayStats.ciHigh}] min`,
             `[BLENDED MODEL]   Final delay estimate: ${finalDelayPct}%  (α=${ALPHA} probability, ${(1 - ALPHA)} linear)`,
-            ...logicResult.conclusions.map(c =>
-                `[LOGIC Modus P.]  ${c.conclusion}: ${c.explanation}`
-            )
+            ...logicResult.conclusions.map(c => {
+                const tag = baseFacts.has(c.conclusion)
+                    ? engineTag
+                    : `${engineTag} ⛓ chained`;
+                return `${tag}  ${c.conclusion}: ${c.explanation}`;
+            })
         ];
 
         return {

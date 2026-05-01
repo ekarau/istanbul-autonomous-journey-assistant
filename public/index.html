@@ -84,8 +84,10 @@
             </div>
 
             <div class="map-overlay bottom-info">
-                <div class="status-badge">
-                    <span class="pulse-red"></span> Live Traffic: Heavy
+
+                <div class="status-badge" id="traffic-status-badge">
+                    <span class="pulse-red"></span> Live Traffic: Calculating…
+
                 </div>
                 <button id="locate-btn" class="floating-btn" title="Find My Location">
                     <i class="fa-solid fa-location-crosshairs"></i>
@@ -141,13 +143,53 @@
             </footer>
         </aside>
     </div>
+
+
+    <!-- Layer 1 — Data constants -->
+    <script src="../src/data/delay_factors.js"></script>
+
+    <!-- Layer 2 — Perception -->
+    <script src="../src/perception/geo.js"></script>
+    <script src="../src/perception/incidents.js"></script>
+    <script src="../src/perception/peak_hour.js"></script>
+    <script src="../src/decision/route_decision.js"></script>
+
+    <!-- Layer 3 — Mathematical model -->
     <script src="../src/math/math_model.js"></script>
+    <script src="../src/math/linear_algebra.js"></script>
+    <script src="../src/math/logic_engine.js"></script>
+    <script src="../src/math/probability.js"></script>
+
+    <!-- Layer 4 — Optimization -->
     <script src="../src/optimization/optimizer.js"></script>
     <script src="../src/optimization/baseline_greedy.js"></script>
     <script src="../src/optimization/simulated_annealing.js"></script>
+    <script src="../src/optimization/ga_route_planner.js"></script>
+
+    <!-- Layer 5 — Monitoring & evaluation -->
     <script src="../src/monitoring/evaluator.js"></script>
     <script src="../src/monitoring/metrics_panel.js"></script>
+
+    <!-- Layer 6 — Agent -->
     <script src="../src/decision/agent.js"></script>
+
+    <!-- Backend connection test -->
+    <script>
+        const BACKEND_URL = "http://127.0.0.1:5000";
+
+        async function testBackendConnection() {
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/phrases`);
+                const data = await response.json();
+
+                console.log("Backend bağlantısı başarılı:", data);
+            } catch (error) {
+                console.error("Backend bağlantı hatası:", error);
+            }
+        }
+
+        testBackendConnection();
+    </script>
 </body>
 
 </html>

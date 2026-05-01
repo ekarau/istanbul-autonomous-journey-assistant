@@ -40,10 +40,15 @@
 
     const HISTORY_LEN = 40;
 
+    let _mountId = 0;   // increment each mount to avoid duplicate IDs
+
     // ── Build the DOM once ────────────────────────────────────────
     function buildDom() {
+        _mountId++;
+        const uid = _mountId;   // unique suffix for this panel instance
         const panel = document.createElement('div');
         panel.className = 'card metrics-panel';
+        panel.dataset.mpId = uid;
         panel.style.cssText = 'margin-top:12px;padding:12px;';
         panel.innerHTML = `
             <div class="ai-header" style="margin-bottom:10px;">
@@ -52,13 +57,13 @@
             </div>
 
             <div class="mp-live" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px;">
-                ${cell('E[D]',   'mp-E',     'min')}
-                ${cell('σ[D]',   'mp-sigma', 'min')}
-                ${cell('Iter',   'mp-iter',  '')}
-                ${cell('T',      'mp-T',     '')}
+                ${cell('E[D]',   'mp-E-'+uid,     'min')}
+                ${cell('σ[D]',   'mp-sigma-'+uid, 'min')}
+                ${cell('Iter',   'mp-iter-'+uid,  '')}
+                ${cell('T',      'mp-T-'+uid,     '')}
             </div>
 
-            <canvas id="mp-spark" width="300" height="40"
+            <canvas id="mp-spark-${uid}" width="300" height="40"
                     style="width:100%;height:40px;display:block;
                            background:rgba(255,255,255,0.03);border-radius:6px;"></canvas>
 
@@ -83,7 +88,8 @@
     // ── Sparkline renderer (no deps) ──────────────────────────────
     function drawSparkline() {
         if (!root) return;
-        const c = root.querySelector('#mp-spark');
+        const uid = root.dataset.mpId;
+        const c = root.querySelector('#mp-spark-' + uid);
         if (!c || history.length < 2) return;
         const ctx = c.getContext('2d');
         const w = c.width, h = c.height;
@@ -131,7 +137,10 @@
 
     function setCell(id, value) {
         if (!root) return;
-        const el = root.querySelector(id);
+        const uid = root.dataset.mpId;
+        // id arrives as e.g. '#mp-E' — append uid to target the right instance
+        const selector = id.replace(/^#/, '#') + (id.includes('-' + uid) ? '' : '-' + uid);
+        const el = root.querySelector(selector);
         if (el) el.textContent = (value === undefined || value === null || Number.isNaN(value))
             ? '—'
             : (typeof value === 'number' ? round(value) : String(value));
@@ -228,9 +237,10 @@
     function reset() {
         history = [];
         if (!root) return;
+        const uid = root.dataset.mpId;
         ['#mp-E', '#mp-sigma', '#mp-iter', '#mp-T'].forEach(id => setCell(id, null));
         if (summaryBox) summaryBox.innerHTML = '';
-        const c = root.querySelector('#mp-spark');
+        const c = root.querySelector('#mp-spark-' + uid);
         if (c) c.getContext('2d').clearRect(0, 0, c.width, c.height);
     }
 

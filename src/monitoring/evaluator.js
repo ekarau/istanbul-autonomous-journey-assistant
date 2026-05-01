@@ -431,6 +431,35 @@
         console.info('[Evaluator] Registered SA adapter → window.Optimizers.simulatedAnnealing');
     }
 
+    // ── GA adapter — registered at load time ─────────────────
+    //  FIX 1: GA previously only registered itself inside appendGAPanel(),
+    //  which fires after 'Analyze Route' is clicked. If the user opens
+    //  the benchmark panel before analyzing a route, GA was missing from
+    //  window.Optimizers and only Greedy + SA appeared in results.
+    if (window.GeneticAlgorithm && typeof window.GeneticAlgorithm.run === 'function') {
+        window.Optimizers = window.Optimizers || {};
+        window.Optimizers.geneticAlgorithm = function (scenario) {
+            const sets = scenario.candidateFactorSets || [];
+            if (sets.length === 0) return { chosenFactorSet: [], iterations: 0 };
+            if (sets.length === 1) return { chosenFactorSet: sets[0], iterations: 0 };
+
+            const routes = sets.map((set, i) => Object.assign(
+                { name: 'cand' + i },
+                _adapterRouteFromSet(set, scenario)
+            ));
+            const r = window.GeneticAlgorithm.run(routes, {
+                POP_SIZE: 20, MAX_GENERATIONS: 60, PATIENCE: 15
+            });
+            if (!r) return { chosenFactorSet: sets[0], iterations: 0 };
+            const idx = parseInt(String(r.bestRoute.name).replace('cand', ''), 10);
+            return {
+                chosenFactorSet: sets[Number.isFinite(idx) ? idx : 0],
+                iterations:      r.generations || 0
+            };
+        };
+        console.info('[Evaluator] Registered GA adapter → window.Optimizers.geneticAlgorithm');
+    }
+
     // ── Public API ────────────────────────────────────────────────
     window.Evaluator = {
         run,
