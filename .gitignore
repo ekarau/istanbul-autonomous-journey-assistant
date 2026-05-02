@@ -8,3 +8,12 @@ Thumbs.db
 *.swp
 .env
 .claude/
+
+# Python (backend)
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Course materials (kept locally, not in submission repo)
+docs/subject.pdf
