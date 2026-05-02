@@ -2,90 +2,273 @@
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
-    <title>Optimizer Benchmark</title>
+    <title>Optimizer Benchmark — COE017</title>
     <style>
-        body { font-family: -apple-system, "Segoe UI", sans-serif; background: #0E1117; color: #E6EDF3; margin: 0; padding: 24px; }
-        h1 { font-size: 1.4rem; margin: 0 0 4px; }
-        .sub { color: #8B949E; font-size: 0.85rem; margin-bottom: 20px; }
-        .panel { background: #161B22; padding: 14px 18px; border-radius: 10px; border: 1px solid #30363D; margin-bottom: 16px; }
-        .panel h2 { font-size: 0.95rem; margin: 0 0 8px; color: #64FFDA; }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body   { font-family: -apple-system, "Segoe UI", sans-serif; background: #0E1117; color: #E6EDF3; padding: 24px; }
+        h1     { font-size: 1.4rem; margin-bottom: 4px; }
+        .sub   { color: #8B949E; font-size: 0.82rem; margin-bottom: 20px; }
+        .panel { background: #161B22; padding: 14px 18px; border-radius: 10px;
+                 border: 1px solid #30363D; margin-bottom: 16px; }
+        .panel h2  { font-size: 0.95rem; margin-bottom: 8px; color: #64FFDA; }
         .panel p, .panel li { font-size: 0.82rem; color: #C9D1D9; line-height: 1.5; }
-        .panel code, code { color: #FFD700; font-family: ui-monospace, "Cascadia Code", monospace; font-size: 0.78rem; }
-        .controls { display: flex; gap: 10px; margin-bottom: 16px; align-items: center; }
-        button { background: #238636; color: #fff; border: 0; padding: 8px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.85rem; }
-        button:hover { background: #2EA043; }
-        input[type=number] { background: #0E1117; color: #E6EDF3; border: 1px solid #30363D; padding: 6px 10px; border-radius: 6px; width: 80px; font-size: 0.85rem; }
-        label { font-size: 0.85rem; color: #8B949E; }
-        table { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin-top: 10px; }
-        th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #21262D; }
-        th { color: #8B949E; font-weight: 600; text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.5px; }
-        td.num { font-family: ui-monospace, monospace; color: #64FFDA; text-align: right; }
-        tr.winner td { background: #11221A; }
-        .warn { color: #FFA500; font-weight: 600; }
-        .err  { color: #FF4D4D; font-weight: 600; }
-        .ok   { color: #2ECC71; font-weight: 600; }
+        code   { color: #FFD700; font-family: ui-monospace, "Cascadia Code", monospace; font-size: 0.78rem; }
+        pre    { background:#0E1117; padding:10px; border-radius:6px;
+                 overflow-x:auto; font-size:0.78rem; color:#C9D1D9; white-space:pre-wrap; }
+
+        /* Controls */
+        .controls { display:flex; flex-wrap:wrap; gap:10px; margin-bottom:16px; align-items:center; }
+        button { background:#238636; color:#fff; border:0; padding:8px 16px;
+                 border-radius:6px; font-weight:600; cursor:pointer; font-size:0.85rem; }
+        button:hover { background:#2EA043; }
+        button:disabled { background:#1c6b2a; opacity:.5; cursor:not-allowed; }
+        input[type=number] { background:#0E1117; color:#E6EDF3; border:1px solid #30363D;
+                             padding:6px 10px; border-radius:6px; width:80px; font-size:0.85rem; }
+        label  { font-size:0.85rem; color:#8B949E; }
+
+        /* Tables */
+        table  { width:100%; border-collapse:collapse; font-size:0.82rem; margin-top:10px; }
+        th, td { padding:8px 12px; text-align:left; border-bottom:1px solid #21262D; }
+        th     { color:#8B949E; font-weight:600; text-transform:uppercase;
+                 font-size:0.7rem; letter-spacing:.5px; }
+        td.num { font-family:ui-monospace,monospace; color:#64FFDA; text-align:right; }
+        tr.winner td { background:#11221A; }
+        tr.winner td:first-child::before { content:"🏆 "; }
+
+        /* Status colours */
+        .warn  { color:#FFA500; font-weight:600; }
+        .err   { color:#FF4D4D; font-weight:600; }
+        .ok    { color:#2ECC71; font-weight:600; }
+        .muted { color:#8B949E; }
+
+        /* Regression badge */
+        .badge-pass { background:#11221A; color:#2ECC71; padding:2px 7px;
+                      border-radius:4px; font-size:0.72rem; font-weight:700; }
+        .badge-fail { background:#2D1117; color:#FF4D4D; padding:2px 7px;
+                      border-radius:4px; font-size:0.72rem; font-weight:700; }
+        .badge-ref  { color:#8B949E; font-size:0.72rem; }
+
+        /* Sparkline container */
+        .sparkline-row td { padding-bottom:4px; }
+
+        /* Progress bar */
+        #progress-wrap { display:none; height:4px; background:#21262D;
+                         border-radius:2px; margin-bottom:12px; overflow:hidden; }
+        #progress-bar  { height:100%; width:0; background:#238636;
+                         transition:width .15s linear; }
     </style>
 </head>
 <body>
     <h1>Optimizer Benchmark</h1>
-    <div class="sub">COE017 · compares registered optimizers against the greedy baseline on synthetic Istanbul scenarios.</div>
-
-    <div class="panel">
-        <h2>How to plug in your optimizer</h2>
-        <p>Bu benchmark <code>window.Optimizers</code> üzerinden çalışır. Optimization Specialist
-           kendi modülünü yazınca aşağıdaki sözleşmeyi sağlamalı:</p>
-        <pre style="background:#0E1117;padding:10px;border-radius:6px;overflow-x:auto;font-size:0.78rem;color:#C9D1D9;">window.Optimizers = window.Optimizers || {};
-window.Optimizers.simulatedAnnealing = function (scenario) {
-    // scenario = { baseTimeMin, candidateFactorSets: string[][] }
-    // return { chosenFactorSet: string[], iterations: number }
-};</pre>
-        <p>Greedy baseline (her senaryoda en düşük anlık E[D]'yi seçer) <strong>bu sayfada gömülü</strong>
-           çünkü subject PDF benchmark için bir referans noktası gerektiriyor.
-           Gerçek Hill Climbing / SA / GA / MCTS implementasyonu
-           <code>src/optimization/</code> altına ayrı dosya olarak gelecek.</p>
+    <div class="sub">
+        COE017 · Karşılaştırma: Greedy Baseline · Hill Climbing · Simulated Annealing · Genetic Algorithm
     </div>
 
+    <!-- ── Regression threshold explanation ──────────────────────── -->
+    <div class="panel">
+        <h2>Regression threshold</h2>
+        <p>
+            Her optimizer <strong>greedy baseline'ı en az %5 geride bırakmalıdır</strong>
+            (mean cost bakımından).  Bu eşik SA/GA/HC'nin rastgele çalışmadığını kanıtlar.
+            <br><br>
+            <strong>Cost function:</strong>
+            <code>cost = E[D] + λ · ‖x‖₂</code>
+            (gecikme dakikası + risk büyüklüğü cezası)
+            <br>
+            <strong>Scenario:</strong> her senaryoda 3–6 rota adayı (farklı aktif faktör kümeleri);
+            optimizer en ucuz rotayı seçmeli.
+        </p>
+    </div>
+
+    <!-- ── Controls ───────────────────────────────────────────────── -->
     <div class="controls">
-        <label>Senaryo sayısı: <input type="number" id="n-scenarios" value="50" min="5" max="500"></label>
-        <label>λ (norm cezası): <input type="number" id="lambda" value="2.0" step="0.1" min="0"></label>
-        <button id="run-btn">Run benchmark</button>
+        <label>Senaryo sayısı:
+            <input type="number" id="n-scenarios" value="100" min="10" max="1000">
+        </label>
+        <label>λ (norm cezası):
+            <input type="number" id="lambda" value="2.0" step="0.1" min="0">
+        </label>
+        <label>Regression eşiği (%):
+            <input type="number" id="threshold" value="5" step="1" min="0" max="50">
+        </label>
+        <button id="run-btn">▶ Run benchmark</button>
         <span id="status" class="sub"></span>
     </div>
 
+    <div id="progress-wrap"><div id="progress-bar"></div></div>
     <div id="results"></div>
 
+    <!-- ── Script loading (correct dependency order) ──────────────── -->
+    <!--
+        FIX: Previously only math_model.js was loaded here, so
+        window.Optimizers was always empty and only the greedy baseline ran.
+        Now all optimizer modules are loaded in the correct dependency order:
+          1. delay_factors.js   → window.DELAY_FACTORS_DATA (constants)
+          2. math_model.js      → window.MathModel
+          3. optimizer.js       → window.Optimizer  (Hill Climbing)
+          4. simulated_annealing.js → window.SimulatedAnnealing
+          5. ga_route_planner.js    → window.GeneticAlgorithm
+        Each module self-registers into window.Optimizers at load time
+        via the adapter defined below.
+    -->
+    <script src="../src/data/delay_factors.js"></script>
     <script src="../src/math/math_model.js"></script>
+    <script src="../src/optimization/optimizer.js"></script>
+    <script src="../src/optimization/simulated_annealing.js"></script>
+    <script src="../src/optimization/ga_route_planner.js"></script>
+
     <script>
     (function () {
         'use strict';
 
-        // ── Reference greedy baseline (always available) ───────────────
-        // Picks the candidate factor set that minimises raw E[D].
-        // This is intentionally dumb — it is the "do-nothing-clever" anchor.
+        // ============================================================
+        //  BENCHMARK SCENARIO INTERFACE
+        //  scenario = { baseTimeMin, candidateFactorSets: string[][] }
+        //
+        //  Optimizer modules (SA, GA, HC) use a richer route interface:
+        //  route = { name, activeKeys, baseTimeMin, distanceKm, transferCount }
+        //
+        //  The adapter below converts candidateFactorSets → route objects
+        //  so all three optimizers can participate in the same benchmark.
+        // ============================================================
+
+        /**
+         * scenarioToRoutes
+         * ----------------
+         * Converts benchmark scenario format → optimizer route format.
+         * Distance and transferCount are synthesised from factorSet
+         * composition to keep scenarios realistic.
+         */
+        function scenarioToRoutes(scenario) {
+            return scenario.candidateFactorSets.map((factorSet, i) => {
+                const hasIntercont = factorSet.includes('intercontinental');
+                const hasLong      = factorSet.includes('longRoute');
+                const hasWest      = factorSet.includes('westSide');
+                return {
+                    name:          'Route-' + (i + 1),
+                    activeKeys:    factorSet,
+                    baseTimeMin:   scenario.baseTimeMin,
+                    distanceKm:    hasIntercont ? 28 + i * 3 : hasLong ? 18 + i * 2 : 8 + i * 2,
+                    transferCount: hasIntercont ? 2 : hasWest ? 1 : 0
+                };
+            });
+        }
+
+        /**
+         * routesToChosenFactorSet
+         * -----------------------
+         * Extracts the activeKeys of the best route returned by SA/GA
+         * back to the benchmark's chosenFactorSet format.
+         */
+        function routesToChosenFactorSet(result, fallbackSet) {
+            if (result && result.bestRoute && result.bestRoute.activeKeys) {
+                return {
+                    chosenFactorSet: result.bestRoute.activeKeys,
+                    iterations:      result.generations || result.iterationCount || 0
+                };
+            }
+            return { chosenFactorSet: fallbackSet, iterations: 0 };
+        }
+
+        // ============================================================
+        //  GREEDY BASELINE  (always available, embedded here)
+        //  Picks the candidate factor set that minimises raw E[D].
+        // ============================================================
         function greedyBaseline(scenario) {
-            let best = null;
-            let bestCost = Infinity;
-            scenario.candidateFactorSets.forEach((set, i) => {
+            let best = null, bestCost = Infinity;
+            scenario.candidateFactorSets.forEach(set => {
                 const e = MathModel.expectedDelay(scenario.baseTimeMin, set).E;
                 if (e < bestCost) { bestCost = e; best = set; }
             });
             return { chosenFactorSet: best, iterations: scenario.candidateFactorSets.length };
         }
 
-        // ── Cost function (single source of truth) ─────────────────────
-        // cost = E[D] + λ · ‖x‖₂   (delay minutes + risk magnitude penalty)
+        // ============================================================
+        //  HILL CLIMBING ADAPTER
+        //  optimizer.js exposes runHillClimbing() which optimises the
+        //  weight vector — it does not select from candidates.
+        //  We wrap it here as a per-scenario route-selection strategy:
+        //  use the optimised weights to score each candidate and pick
+        //  the one with the lowest weighted feature norm.
+        // ============================================================
+        function hillClimbingAdapter(scenario) {
+            // Ensure weights are initialised (idempotent)
+            if (window.Optimizer && typeof window.Optimizer.runHillClimbing === 'function') {
+                window.Optimizer.runHillClimbing();
+            }
+
+            // Score each candidate using optimised weights (or uniform fallback)
+            const weights = (window.Optimizer && window.Optimizer.getOptimizedWeights &&
+                             window.Optimizer.getOptimizedWeights()) ||
+                            new Float64Array(9).fill(1 / 9);
+
+            let best = null, bestScore = Infinity;
+            let iters = 0;
+            scenario.candidateFactorSets.forEach(set => {
+                const x     = MathModel.buildFeatureVector(set);
+                const score = MathModel.dotProduct(weights, x);
+                iters++;
+                if (score < bestScore) { bestScore = score; best = set; }
+            });
+            return { chosenFactorSet: best, iterations: iters };
+        }
+
+        // ============================================================
+        //  SA ADAPTER
+        //  SimulatedAnnealing.run(routes) → { bestRoute, ... }
+        // ============================================================
+        function saAdapter(scenario) {
+            if (!window.SimulatedAnnealing) {
+                return greedyBaseline(scenario);  // graceful fallback
+            }
+            const routes = scenarioToRoutes(scenario);
+            const result = window.SimulatedAnnealing.run(routes);
+            return routesToChosenFactorSet(result, scenario.candidateFactorSets[0]);
+        }
+
+        // ============================================================
+        //  GA ADAPTER
+        //  GeneticAlgorithm.run(routes) → { bestRoute, generations, ... }
+        // ============================================================
+        function gaAdapter(scenario) {
+            if (!window.GeneticAlgorithm) {
+                return greedyBaseline(scenario);  // graceful fallback
+            }
+            const routes = scenarioToRoutes(scenario);
+            // Use reduced population for benchmark speed
+            const result = window.GeneticAlgorithm.run(routes, {
+                POP_SIZE:        20,
+                MAX_GENERATIONS: 60,
+                PATIENCE:        15
+            });
+            return routesToChosenFactorSet(result, scenario.candidateFactorSets[0]);
+        }
+
+        // ============================================================
+        //  COST FUNCTION  (single source of truth)
+        //  cost = E[D] + λ · ‖x‖₂
+        // ============================================================
         function costOf(scenario, factorSet, lambda) {
-            const e = MathModel.expectedDelay(scenario.baseTimeMin, factorSet).E;
+            const e    = MathModel.expectedDelay(scenario.baseTimeMin, factorSet).E;
             const norm = MathModel.l2Norm(MathModel.buildFeatureVector(factorSet));
             return e + lambda * norm;
         }
 
-        // ── Synthetic scenario generator ───────────────────────────────
-        // Each scenario gives the optimizer a small menu of candidate routes
-        // (each route = a subset of active delay factors). The optimizer must
-        // pick the cheapest one under the cost function.
-        const ALL_FACTORS = ['accident', 'rain', 'roadwork', 'breakdown',
-                             'peakHour', 'intercontinental', 'westSide', 'longRoute', 'normal'];
+        // ============================================================
+        //  SCENARIO GENERATOR  (deterministic PRNG — reproducible)
+        // ============================================================
+        const ALL_FACTORS = ['accident','rain','roadwork','breakdown',
+                             'peakHour','intercontinental','westSide','longRoute','normal'];
+
+        function seeded(seed) {
+            return function () {
+                seed = (seed + 0x6D2B79F5) | 0;
+                let t = seed;
+                t = Math.imul(t ^ (t >>> 15), t | 1);
+                t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+                return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+            };
+        }
 
         function randomFactorSubset(rng) {
             const n = 1 + Math.floor(rng() * 4);
@@ -99,75 +282,208 @@ window.Optimizers.simulatedAnnealing = function (scenario) {
         }
 
         function generateScenario(rng) {
-            const baseTimeMin = 20 + Math.floor(rng() * 60); // 20–80 min
-            const k = 3 + Math.floor(rng() * 4);             // 3–6 candidates
+            const baseTimeMin = 20 + Math.floor(rng() * 60);
+            const k = 3 + Math.floor(rng() * 4);
             const candidateFactorSets = [];
             for (let i = 0; i < k; i++) candidateFactorSets.push(randomFactorSubset(rng));
             return { baseTimeMin, candidateFactorSets };
         }
 
-        // Deterministic PRNG (mulberry32) so benchmark is reproducible.
-        function seeded(seed) {
-            return function () {
-                seed = (seed + 0x6D2B79F5) | 0;
-                let t = seed;
-                t = Math.imul(t ^ (t >>> 15), t | 1);
-                t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-                return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-            };
+        // ============================================================
+        //  SPARKLINE  (SVG, inline)
+        // ============================================================
+        function sparkline(values, color) {
+            if (!values || values.length < 2) return '';
+            const W = 120, H = 28;
+            const mn = Math.min(...values), mx = Math.max(...values);
+            const range = mx - mn || 0.001;
+            const pts = values.map((v, i) => {
+                const x = (i / (values.length - 1)) * W;
+                const y = H - ((v - mn) / range) * (H - 4) - 2;
+                return `${x.toFixed(1)},${y.toFixed(1)}`;
+            }).join(' ');
+            return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+                <polyline points="${pts}" fill="none" stroke="${color}"
+                          stroke-width="1.5" stroke-linejoin="round"/>
+            </svg>`;
         }
 
-        // ── Benchmark runner ───────────────────────────────────────────
+        // ============================================================
+        //  BENCHMARK RUNNER
+        // ============================================================
         function runBenchmark(N, lambda) {
-            const rng = seeded(42);
+            const rng       = seeded(42);
             const scenarios = Array.from({ length: N }, () => generateScenario(rng));
 
-            const optimizers = Object.assign(
-                { greedyBaseline },
-                window.Optimizers || {}
-            );
+            // All optimizers participating in this run
+            const optimizers = {
+                greedyBaseline,
+                hillClimbing: hillClimbingAdapter,
+                simulatedAnnealing: saAdapter,
+                geneticAlgorithm:   gaAdapter
+            };
 
+            const LABELS = {
+                greedyBaseline:    'Greedy Baseline',
+                hillClimbing:      'Hill Climbing',
+                simulatedAnnealing:'Simulated Annealing',
+                geneticAlgorithm:  'Genetic Algorithm'
+            };
+
+            const COLORS = {
+                greedyBaseline:    '#8B949E',
+                hillClimbing:      '#64FFDA',
+                simulatedAnnealing:'#FFA500',
+                geneticAlgorithm:  '#10B981'
+            };
+
+            // Stats accumulators
             const stats = {};
             Object.keys(optimizers).forEach(name => {
                 stats[name] = { costs: [], wins: 0, iters: 0 };
             });
 
-            scenarios.forEach(sc => {
+            // Progress bar update
+            const bar = document.getElementById('progress-bar');
+            const wrap = document.getElementById('progress-wrap');
+            wrap.style.display = 'block';
+
+            scenarios.forEach((sc, si) => {
+                bar.style.width = ((si / N) * 100) + '%';
+
                 const trial = {};
                 Object.keys(optimizers).forEach(name => {
-                    const t0 = performance.now();
-                    const res = optimizers[name](sc);
-                    const dt = performance.now() - t0;
-                    const c = costOf(sc, res.chosenFactorSet, lambda);
-                    stats[name].costs.push(c);
+                    const res  = optimizers[name](sc);
+                    const cost = costOf(sc, res.chosenFactorSet, lambda);
+                    stats[name].costs.push(cost);
                     stats[name].iters += (res.iterations || 0);
-                    trial[name] = { cost: c, time: dt };
+                    trial[name] = cost;
                 });
+
                 // Winner = lowest cost on this scenario
                 const winner = Object.keys(trial).reduce((a, b) =>
-                    trial[a].cost <= trial[b].cost ? a : b);
-                stats[winner].wins += 1;
+                    trial[a] <= trial[b] ? a : b);
+                stats[winner].wins++;
             });
 
-            // Aggregate
+            bar.style.width = '100%';
+
+            // Aggregate stats + per-scenario cost history for sparklines
             return Object.keys(stats).map(name => {
-                const c = stats[name].costs;
-                const mean = c.reduce((s, v) => s + v, 0) / c.length;
-                const variance = c.reduce((s, v) => s + (v - mean) ** 2, 0) / c.length;
+                const c      = stats[name].costs;
+                const mean   = c.reduce((s, v) => s + v, 0) / c.length;
+                const stddev = Math.sqrt(c.reduce((s, v) => s + (v - mean) ** 2, 0) / c.length);
+                // Bucket costs into 20 time-ordered bins for sparkline
+                const binSize = Math.max(1, Math.floor(c.length / 20));
+                const bins = [];
+                for (let i = 0; i < c.length; i += binSize) {
+                    const slice = c.slice(i, i + binSize);
+                    bins.push(slice.reduce((s, v) => s + v, 0) / slice.length);
+                }
                 return {
                     name,
+                    label:    LABELS[name]  || name,
+                    color:    COLORS[name]  || '#64FFDA',
                     meanCost: mean,
-                    stdCost: Math.sqrt(variance),
-                    wins: stats[name].wins,
-                    winRate: stats[name].wins / N,
-                    avgIters: stats[name].iters / N
+                    stdCost:  stddev,
+                    wins:     stats[name].wins,
+                    winRate:  stats[name].wins / N,
+                    avgIters: stats[name].iters / N,
+                    bins
                 };
             }).sort((a, b) => a.meanCost - b.meanCost);
         }
 
-        function render(rows) {
+        // ============================================================
+        //  REGRESSION CHECK
+        //  Each non-greedy optimizer must beat greedy by >= threshold%.
+        // ============================================================
+        function regressionCheck(rows, thresholdPct) {
             const baseline = rows.find(r => r.name === 'greedyBaseline').meanCost;
-            const html = `
+            const results  = {};
+            rows.forEach(r => {
+                if (r.name === 'greedyBaseline') return;
+                const improvPct = ((baseline - r.meanCost) / baseline) * 100;
+                results[r.name] = {
+                    improvPct,
+                    pass: improvPct >= thresholdPct
+                };
+            });
+            return results;
+        }
+
+        // ============================================================
+        //  RENDER
+        // ============================================================
+        function render(rows, thresholdPct) {
+            const baseline   = rows.find(r => r.name === 'greedyBaseline').meanCost;
+            const regression = regressionCheck(rows, thresholdPct);
+            const allPass    = Object.values(regression).every(r => r.pass);
+
+            // ── Regression summary banner ──────────────────────────────
+            const bannerColor  = allPass ? '#11221A' : '#2D1117';
+            const bannerBorder = allPass ? '#2ECC71'  : '#FF4D4D';
+            const bannerText   = allPass
+                ? `✅ Regression test PASSED — all optimizers beat greedy by ≥${thresholdPct}%`
+                : `❌ Regression test FAILED — one or more optimizers did not beat greedy by ${thresholdPct}%`;
+
+            // ── Table rows ─────────────────────────────────────────────
+            const tableRows = rows.map((r, i) => {
+                const regResult  = regression[r.name];
+                const isBaseline = r.name === 'greedyBaseline';
+                const vsGreedy   = isBaseline
+                    ? '<span class="badge-ref">reference</span>'
+                    : regResult.pass
+                        ? `<span class="badge-pass">✓ +${regResult.improvPct.toFixed(1)}%</span>`
+                        : `<span class="badge-fail">✗ ${regResult.improvPct.toFixed(1)}%</span>`;
+
+                return `
+                <tr class="${i === 0 ? 'winner' : ''}">
+                    <td style="color:${r.color};font-weight:${i===0?'700':'400'}">
+                        ${r.label}
+                        ${isBaseline ? '<span class="muted" style="font-size:0.7rem"> (reference)</span>' : ''}
+                    </td>
+                    <td class="num">${r.meanCost.toFixed(3)}</td>
+                    <td class="num">${r.stdCost.toFixed(3)}</td>
+                    <td class="num">${r.wins}</td>
+                    <td class="num">${(r.winRate * 100).toFixed(1)}%</td>
+                    <td class="num">${r.avgIters.toFixed(1)}</td>
+                    <td class="num">${vsGreedy}</td>
+                    <td class="sparkline-row">${sparkline(r.bins, r.color)}</td>
+                </tr>`;
+            }).join('');
+
+            // ── Per-optimizer detail cards ─────────────────────────────
+            const detailCards = rows
+                .filter(r => r.name !== 'greedyBaseline')
+                .map(r => {
+                    const reg = regression[r.name];
+                    return `
+                    <div style="border-left:3px solid ${r.color};
+                                padding:8px 12px;margin-top:8px;
+                                background:rgba(255,255,255,0.02);border-radius:0 6px 6px 0;">
+                        <span style="color:${r.color};font-weight:700;">${r.label}</span>
+                        &nbsp;—&nbsp;
+                        mean cost <strong>${r.meanCost.toFixed(3)}</strong>
+                        &nbsp;|&nbsp; win rate <strong>${(r.winRate*100).toFixed(1)}%</strong>
+                        &nbsp;|&nbsp; avg iters <strong>${r.avgIters.toFixed(1)}</strong>
+                        &nbsp;|&nbsp; vs greedy:
+                        <span class="${reg.pass ? 'ok' : 'err'}">
+                            ${reg.improvPct >= 0 ? '+' : ''}${reg.improvPct.toFixed(2)}%
+                            ${reg.pass ? '✓ PASS' : '✗ FAIL'}
+                        </span>
+                    </div>`;
+                }).join('');
+
+            document.getElementById('results').innerHTML = `
+                <!-- Regression banner -->
+                <div style="padding:10px 16px;border-radius:8px;margin-bottom:12px;
+                            background:${bannerColor};border:1px solid ${bannerBorder};
+                            font-size:0.85rem;font-weight:600;color:${allPass?'#2ECC71':'#FF4D4D'};">
+                    ${bannerText}
+                </div>
+
+                <!-- Main results table -->
                 <div class="panel">
                     <h2>Results (lower mean cost = better)</h2>
                     <table>
@@ -179,48 +495,57 @@ window.Optimizers.simulatedAnnealing = function (scenario) {
                                 <th>Wins</th>
                                 <th>Win rate</th>
                                 <th>Avg iters</th>
-                                <th>vs greedy</th>
+                                <th>vs greedy (≥${thresholdPct}% to pass)</th>
+                                <th>Cost trend</th>
                             </tr>
                         </thead>
-                        <tbody>
-                            ${rows.map((r, i) => `
-                                <tr class="${i === 0 ? 'winner' : ''}">
-                                    <td>${r.name}${r.name === 'greedyBaseline' ? ' <span class="sub">(reference)</span>' : ''}</td>
-                                    <td class="num">${r.meanCost.toFixed(2)}</td>
-                                    <td class="num">${r.stdCost.toFixed(2)}</td>
-                                    <td class="num">${r.wins}</td>
-                                    <td class="num">${(r.winRate * 100).toFixed(1)}%</td>
-                                    <td class="num">${r.avgIters.toFixed(1)}</td>
-                                    <td class="num ${r.name === 'greedyBaseline' ? '' : (r.meanCost < baseline ? 'ok' : 'err')}">
-                                        ${r.name === 'greedyBaseline' ? '—' :
-                                          ((baseline - r.meanCost) / baseline * 100).toFixed(1) + '%'}
-                                    </td>
-                                </tr>
-                            `).join('')}
-                        </tbody>
+                        <tbody>${tableRows}</tbody>
                     </table>
                 </div>
+
+                <!-- Per-optimizer detail -->
+                <div class="panel">
+                    <h2>Optimizer detail</h2>
+                    ${detailCards}
+                </div>
             `;
-            document.getElementById('results').innerHTML = html;
         }
 
+        // ============================================================
+        //  EVENT BINDING
+        // ============================================================
         document.getElementById('run-btn').addEventListener('click', function () {
-            const N = parseInt(document.getElementById('n-scenarios').value, 10);
-            const lambda = parseFloat(document.getElementById('lambda').value);
-            const status = document.getElementById('status');
+            const N         = parseInt(document.getElementById('n-scenarios').value, 10) || 100;
+            const lambda    = parseFloat(document.getElementById('lambda').value) || 2.0;
+            const threshold = parseFloat(document.getElementById('threshold').value) || 5;
+            const btn       = document.getElementById('run-btn');
+            const status    = document.getElementById('status');
+
+            btn.disabled    = true;
             status.textContent = 'running…';
+            document.getElementById('results').innerHTML = '';
+
+            // Defer to allow the DOM to repaint with "running..." before blocking
             setTimeout(() => {
-                const rows = runBenchmark(N, lambda);
-                render(rows);
-                const registered = Object.keys(window.Optimizers || {});
-                status.innerHTML = registered.length === 0
-                    ? '<span class="warn">No optimizer registered — only greedy baseline ran. Plug in window.Optimizers.simulatedAnnealing to compare.</span>'
-                    : `<span class="ok">Done — compared ${registered.length + 1} optimizers over ${N} scenarios.</span>`;
-            }, 10);
+                try {
+                    const rows = runBenchmark(N, lambda);
+                    render(rows, threshold);
+                    status.innerHTML =
+                        `<span class="ok">Done — ${N} scenarios · λ=${lambda} · threshold ${threshold}%</span>`;
+                } catch (err) {
+                    status.innerHTML =
+                        `<span class="err">Error: ${err.message}</span>`;
+                    console.error('[Benchmark]', err);
+                } finally {
+                    btn.disabled = false;
+                    document.getElementById('progress-wrap').style.display = 'none';
+                }
+            }, 20);
         });
 
-        // Auto-run once on load with defaults.
+        // Auto-run on page load
         document.getElementById('run-btn').click();
+
     })();
     </script>
 </body>

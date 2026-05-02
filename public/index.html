@@ -84,10 +84,8 @@
             </div>
 
             <div class="map-overlay bottom-info">
-
                 <div class="status-badge" id="traffic-status-badge">
                     <span class="pulse-red"></span> Live Traffic: Calculating…
-
                 </div>
                 <button id="locate-btn" class="floating-btn" title="Find My Location">
                     <i class="fa-solid fa-location-crosshairs"></i>
@@ -143,9 +141,20 @@
             </footer>
         </aside>
     </div>
+    <!--
+        Script loading order (IMPORTANT — each module depends on those above it):
+        1. delay_factors.js  — Single source of truth for all constants (window.DELAY_FACTORS_DATA)
+        2. Perception layer  — geo, incidents, peak_hour (read from delay_factors)
+        3. math_model.js     — reads window.DELAY_FACTORS for DELAY_PARAMS
+        4. Optimization      — optimizer, baseline_greedy, simulated_annealing
+        5. Monitoring        — evaluator, metrics_panel
+        6. agent.js          — main decision loop (reads all modules above via window.*)
 
-
-    <!-- Layer 1 — Data constants -->
+        NOTE: public/app.js has been retired to archive/app.js.bak
+        It was a dead duplicate of agent.js that was never loaded here;
+        see docs/architecture.md and the evaluation report §4.2 Defect 1.
+    -->
+    <!-- Layer 1 — Data constants (single source of truth) -->
     <script src="../src/data/delay_factors.js"></script>
 
     <!-- Layer 2 — Perception -->
@@ -170,26 +179,8 @@
     <script src="../src/monitoring/evaluator.js"></script>
     <script src="../src/monitoring/metrics_panel.js"></script>
 
-    <!-- Layer 6 — Agent -->
+    <!-- Layer 6 — Agent (main decision loop) -->
     <script src="../src/decision/agent.js"></script>
-
-    <!-- Backend connection test -->
-    <script>
-        const BACKEND_URL = "http://127.0.0.1:5000";
-
-        async function testBackendConnection() {
-            try {
-                const response = await fetch(`${BACKEND_URL}/api/phrases`);
-                const data = await response.json();
-
-                console.log("Backend bağlantısı başarılı:", data);
-            } catch (error) {
-                console.error("Backend bağlantı hatası:", error);
-            }
-        }
-
-        testBackendConnection();
-    </script>
 </body>
 
 </html>

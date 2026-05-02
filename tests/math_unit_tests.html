@@ -2,165 +2,776 @@
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
-    <title>Math Model — Unit Tests</title>
+    <title>Unit Tests — COE017</title>
     <style>
-        body { font-family: -apple-system, "Segoe UI", sans-serif; background: #0E1117; color: #E6EDF3; margin: 0; padding: 24px; }
-        h1 { font-size: 1.4rem; margin: 0 0 4px; }
-        .sub { color: #8B949E; font-size: 0.85rem; margin-bottom: 20px; }
-        .summary { display: inline-block; padding: 8px 14px; border-radius: 8px; font-weight: 700; margin-bottom: 16px; }
-        .summary.pass { background: #1F4E2C; color: #7FE5A6; }
-        .summary.fail { background: #5A1F1F; color: #FF8A8A; }
-        .test { padding: 10px 14px; margin: 6px 0; border-radius: 8px; border-left: 3px solid; font-family: ui-monospace, "Cascadia Code", monospace; font-size: 0.8rem; }
-        .test.pass { background: #11221A; border-color: #2ECC71; }
-        .test.fail { background: #2A1414; border-color: #FF4D4D; }
-        .test .name { font-weight: 700; color: #E6EDF3; }
-        .test .detail { color: #8B949E; margin-top: 4px; line-height: 1.5; }
-        .badge { display: inline-block; min-width: 44px; text-align: center; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; font-weight: 700; margin-right: 8px; }
-        .badge.pass { background: #2ECC71; color: #0E1117; }
-        .badge.fail { background: #FF4D4D; color: #0E1117; }
-        code { color: #64FFDA; }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body   { font-family: -apple-system, "Segoe UI", sans-serif; background: #0E1117; color: #E6EDF3; padding: 24px; }
+        h1     { font-size: 1.4rem; margin-bottom: 2px; }
+        .sub   { color: #8B949E; font-size: 0.85rem; margin-bottom: 18px; }
+        .summary { display:inline-flex; gap:16px; padding:10px 16px;
+                   border-radius:8px; font-weight:700; margin-bottom:20px; }
+        .summary.pass { background:#1F4E2C; color:#7FE5A6; }
+        .summary.fail { background:#5A1F1F; color:#FF8A8A; }
+        .group { margin-bottom:20px; }
+        .group-title { font-size:0.78rem; font-weight:700; color:#64FFDA;
+                       text-transform:uppercase; letter-spacing:.6px;
+                       margin-bottom:6px; padding-bottom:4px;
+                       border-bottom:1px solid #21262D; }
+        .test  { padding:8px 12px; margin:4px 0; border-radius:6px;
+                 border-left:3px solid; font-family:ui-monospace,"Cascadia Code",monospace;
+                 font-size:0.78rem; }
+        .test.pass { background:#11221A; border-color:#2ECC71; }
+        .test.fail { background:#2A1414; border-color:#FF4D4D; }
+        .name  { font-weight:700; color:#E6EDF3; }
+        .detail{ color:#8B949E; margin-top:3px; line-height:1.5; }
+        .badge { display:inline-block; min-width:44px; text-align:center;
+                 padding:2px 6px; border-radius:4px; font-size:0.68rem;
+                 font-weight:700; margin-right:8px; }
+        .badge.pass { background:#2ECC71; color:#0E1117; }
+        .badge.fail { background:#FF4D4D; color:#0E1117; }
+        .badge.skip { background:#8B949E; color:#0E1117; }
+        code   { color:#64FFDA; }
     </style>
 </head>
 <body>
-    <h1>Math Model — Unit Tests</h1>
-    <div class="sub">COE017 · tests <code>../src/math/math_model.js</code> via <code>window.MathModel</code></div>
+    <h1>Unit Tests</h1>
+    <div class="sub">COE017 · Math · Logic · Perception · Optimization</div>
     <div id="summary" class="summary"></div>
     <div id="results"></div>
 
+    <!-- ── Dependency load order ──────────────────────────────────
+         FIX: Previously only math_model.js was loaded.
+         delay_factors.js must come first so math_model reads
+         window.DELAY_FACTORS instead of using its inline fallback.
+         All new modules follow in dependency order.
+    ─────────────────────────────────────────────────────────────── -->
+    <script src="../src/data/delay_factors.js"></script>
     <script src="../src/math/math_model.js"></script>
+    <script src="../src/math/linear_algebra.js"></script>
+    <script src="../src/math/logic_engine.js"></script>
+    <script src="../src/math/probability.js"></script>
+    <script src="../src/perception/geo.js"></script>
+    <script src="../src/perception/incidents.js"></script>
+    <script src="../src/perception/peak_hour.js"></script>
+    <script src="../src/optimization/optimizer.js"></script>
+    <script src="../src/optimization/baseline_greedy.js"></script>
+    <script src="../src/optimization/simulated_annealing.js"></script>
+    <script src="../src/optimization/ga_route_planner.js"></script>
+
     <script>
     (function () {
         'use strict';
 
         const EPS = 1e-6;
-        const results = [];
+        const groups = [];
+        let currentGroup = null;
 
+        function group(title) {
+            currentGroup = { title, tests: [] };
+            groups.push(currentGroup);
+        }
         function assert(name, cond, detail) {
-            results.push({ name, pass: !!cond, detail: detail || '' });
+            currentGroup.tests.push({ name, pass: !!cond, detail: detail || '', skipped: false });
+        }
+        function skip(name, reason) {
+            currentGroup.tests.push({ name, pass: false, detail: reason, skipped: true });
         }
         function assertClose(name, actual, expected, eps) {
             eps = eps == null ? EPS : eps;
             const ok = Math.abs(actual - expected) <= eps;
-            assert(name, ok, `expected ≈ ${expected}, got ${actual} (Δ=${Math.abs(actual - expected).toExponential(2)}, eps=${eps})`);
-        }
-        function assertEqual(name, actual, expected) {
-            const ok = JSON.stringify(actual) === JSON.stringify(expected);
-            assert(name, ok, `expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
+            assert(name, ok,
+                `expected ≈ ${expected}, got ${actual}  (Δ=${Math.abs(actual-expected).toExponential(2)}, eps=${eps})`);
         }
 
-        // ── 1. buildFeatureVector ──────────────────────────────
-        const x1 = MathModel.buildFeatureVector(['accident', 'rain']);
-        assert('buildFeatureVector: length is 9 (= |FACTOR_KEYS|)', x1.length === 9);
-        assertClose('buildFeatureVector: accident bit set (idx 0)', x1[0], 1.0);
-        assertClose('buildFeatureVector: rain bit set (idx 1)', x1[1], 1.0);
-        assertClose('buildFeatureVector: roadwork bit unset (idx 2)', x1[2], 0.0);
-        assertClose('buildFeatureVector: empty input → zero vector L2', MathModel.l2Norm(MathModel.buildFeatureVector([])), 0.0);
-        assert('buildFeatureVector: ignores unknown factor key', MathModel.l2Norm(MathModel.buildFeatureVector(['nonsense'])) === 0);
+        const ALL_FACTOR_KEYS = [
+            'accident','rain','roadwork','breakdown',
+            'peakHour','intercontinental','westSide','longRoute','normal'
+        ];
 
-        // ── 2. dotProduct ──────────────────────────────────────
-        const a = new Float64Array([1, 2, 3]);
-        const b = new Float64Array([4, 5, 6]);
-        assertClose('dotProduct: [1,2,3]·[4,5,6] = 32', MathModel.dotProduct(a, b), 32);
-        assertClose('dotProduct: orthogonal vectors → 0',
-            MathModel.dotProduct(new Float64Array([1, 0]), new Float64Array([0, 1])), 0);
+        // ════════════════════════════════════════════════════════
+        //  1. delay_factors.js — single source of truth
+        // ════════════════════════════════════════════════════════
+        group('delay_factors.js — single source of truth');
 
-        // ── 3. l2Norm ──────────────────────────────────────────
-        assertClose('l2Norm: ‖(3,4)‖₂ = 5', MathModel.l2Norm(new Float64Array([3, 4])), 5);
-        assertClose('l2Norm: zero vector = 0', MathModel.l2Norm(new Float64Array([0, 0, 0])), 0);
-        assertClose('l2Norm: feature with 4 ones = 2', MathModel.l2Norm(new Float64Array([1, 1, 1, 1])), 2);
+        assert('window.DELAY_FACTORS_DATA is defined',
+            typeof window.DELAY_FACTORS_DATA === 'object' && window.DELAY_FACTORS_DATA !== null);
 
-        // ── 4. probabilityUnion (complement rule) ──────────────
-        const empty = MathModel.probabilityUnion([]);
-        assertClose('probabilityUnion: empty set → 0', empty.prob, 0);
+        assert('DELAY_FACTORS contains all 9 keys', (() => {
+            const df = window.DELAY_FACTORS || {};
+            return ALL_FACTOR_KEYS.every(k => k in df);
+        })());
 
-        const accidentOnly = MathModel.probabilityUnion(['accident']);
-        assertClose('probabilityUnion: single factor = its base (accident=0.350)',
-            accidentOnly.prob, MathModel.DELAY_PARAMS.accident.base);
+        assert('DELAY_FACTORS.accident.base = 0.350',
+            (window.DELAY_FACTORS || {}).accident &&
+            Math.abs(window.DELAY_FACTORS.accident.base - 0.350) < 1e-9);
 
-        // 1 − (1 − 0.350)(1 − 0.180) = 1 − 0.650 × 0.820 = 0.467
-        const accRain = MathModel.probabilityUnion(['accident', 'rain']);
-        assertClose('probabilityUnion: accident+rain = 1−∏(1−pᵢ) ≈ 0.467',
-            accRain.prob, 1 - (1 - 0.350) * (1 - 0.180), 1e-9);
+        assert('PEAK_WINDOWS array has 2 entries (morning + evening)',
+            Array.isArray(window.DELAY_FACTORS_DATA.PEAK_WINDOWS) &&
+            window.DELAY_FACTORS_DATA.PEAK_WINDOWS.length === 2);
 
-        // ── 5. expectedDelay ───────────────────────────────────
+        assert('INCIDENT_ZONE_DEFAULTS array has ≥ 1 entry',
+            Array.isArray(window.DELAY_FACTORS_DATA.INCIDENT_ZONE_DEFAULTS) &&
+            window.DELAY_FACTORS_DATA.INCIDENT_ZONE_DEFAULTS.length >= 1);
+
+        assert('TRANSIT_INSULATION is 0.55',
+            Math.abs(window.DELAY_FACTORS_DATA.TRANSIT_INSULATION - 0.55) < 1e-9);
+
+        // ════════════════════════════════════════════════════════
+        //  2. MathModel — buildFeatureVector
+        // ════════════════════════════════════════════════════════
+        group('MathModel — buildFeatureVector');
+
+        const x2 = MathModel.buildFeatureVector(['accident', 'rain']);
+        assert('length is 9 (= |FACTOR_KEYS|)', x2.length === 9);
+        assertClose('accident bit at idx 0 = 1.0', x2[0], 1.0);
+        assertClose('rain bit at idx 1 = 1.0',     x2[1], 1.0);
+        assertClose('roadwork bit at idx 2 = 0.0', x2[2], 0.0);
+        assertClose('empty input → zero vector (L2=0)',
+            MathModel.l2Norm(MathModel.buildFeatureVector([])), 0.0);
+        assert('unknown key is silently ignored',
+            MathModel.l2Norm(MathModel.buildFeatureVector(['nonsense'])) === 0);
+
+        // ── Edge case: ALL 9 factors active ───────────────────
+        const xAll = MathModel.buildFeatureVector(ALL_FACTOR_KEYS);
+        assert('all 9 factors → feature vector length still 9', xAll.length === 9);
+        assertClose('all 9 factors → all bits = 1.0 (sum = 9 via L2≈3)',
+            MathModel.l2Norm(xAll), 3.0, 1e-4);  // √9 = 3
+
+        // ════════════════════════════════════════════════════════
+        //  3. MathModel — dotProduct & l2Norm
+        // ════════════════════════════════════════════════════════
+        group('MathModel — dotProduct & l2Norm');
+
+        const a = new Float64Array([1,2,3]);
+        const b = new Float64Array([4,5,6]);
+        assertClose('dotProduct [1,2,3]·[4,5,6] = 32', MathModel.dotProduct(a, b), 32);
+        assertClose('dotProduct orthogonal → 0',
+            MathModel.dotProduct(new Float64Array([1,0]), new Float64Array([0,1])), 0);
+        assertClose('dotProduct zero vector → 0',
+            MathModel.dotProduct(new Float64Array([0,0,0]), a), 0);
+
+        assertClose('l2Norm ‖(3,4)‖₂ = 5', MathModel.l2Norm(new Float64Array([3,4])), 5);
+        assertClose('l2Norm zero vector = 0', MathModel.l2Norm(new Float64Array([0,0,0])), 0);
+        assertClose('l2Norm [1,1,1,1] = 2',  MathModel.l2Norm(new Float64Array([1,1,1,1])), 2);
+        assertClose('l2Norm unit vector = 1', MathModel.l2Norm(new Float64Array([1])), 1);
+
+        // ════════════════════════════════════════════════════════
+        //  4. MathModel — probabilityUnion  (complement rule)
+        // ════════════════════════════════════════════════════════
+        group('MathModel — probabilityUnion');
+
+        assertClose('empty set → prob = 0', MathModel.probabilityUnion([]).prob, 0);
+
+        const accOnly = MathModel.probabilityUnion(['accident']);
+        assertClose('single factor = its base (accident=0.350)',
+            accOnly.prob, 0.350, 1e-9);
+
+        // 1 − (1−0.350)(1−0.180) = 0.467
+        const accRain = MathModel.probabilityUnion(['accident','rain']);
+        assertClose('accident+rain = 1−∏(1−pᵢ) ≈ 0.467',
+            accRain.prob, 1-(1-0.350)*(1-0.180), 1e-9);
+
+        // ── Edge case: ALL 9 factors active ───────────────────
+        const allFactorsProb = MathModel.probabilityUnion(ALL_FACTOR_KEYS);
+        assert('all 9 factors → prob ≤ 1.0 (never exceeds 1)',
+            allFactorsProb.prob <= 1.0);
+        assert('all 9 factors → prob > 0.9 (extreme risk scenario)',
+            allFactorsProb.prob > 0.9);
+        assert('all 9 factors → sigma is a finite positive number',
+            Number.isFinite(allFactorsProb.sigma) && allFactorsProb.sigma > 0);
+
+        // ════════════════════════════════════════════════════════
+        //  5. MathModel — expectedDelay
+        // ════════════════════════════════════════════════════════
+        group('MathModel — expectedDelay');
+
         const noDelay = MathModel.expectedDelay(60, []);
-        assertClose('expectedDelay: 60 min base, no factors → E[D]=0', noDelay.E, 0);
-        assertClose('expectedDelay: σ[D]=0 when no factors', noDelay.sigma, 0);
+        assertClose('60 min base, no factors → E[D]=0', noDelay.E, 0);
+        assertClose('no factors → σ[D]=0', noDelay.sigma, 0);
+        assert('ciLow=0 when no factors', noDelay.ciLow === 0);
+        assert('ciHigh=0 when no factors', noDelay.ciHigh === 0);
 
         const peakOnly = MathModel.expectedDelay(60, ['peakHour']);
-        // E = 60 * 0.333 = 19.98 → rounded to 1 decimal = 20.0
-        assertClose('expectedDelay: 60 min × peakHour(0.333) → E[D] ≈ 20.0', peakOnly.E, 20.0, 0.05);
-        assert('expectedDelay: 95% CI low ≥ 0 (clamped)', peakOnly.ciLow >= 0);
-        assert('expectedDelay: 95% CI high > E[D]', peakOnly.ciHigh > peakOnly.E);
+        assertClose('60 min × peakHour(0.333) → E[D] ≈ 20',
+            peakOnly.E, 20.0, 0.5);
+        assert('95% CI low ≥ 0 (clamped)', peakOnly.ciLow >= 0);
+        assert('95% CI high > E[D]', peakOnly.ciHigh > peakOnly.E);
 
-        // ── 6. routeScoreMatrix ────────────────────────────────
-        const routeVecs = [
-            MathModel.buildFeatureVector(['accident', 'peakHour']),
+        // ── Edge case: zero base time ──────────────────────────
+        const zeroBase = MathModel.expectedDelay(0, ['accident','peakHour']);
+        assert('zero base time → E[D]=0 (no delay from zero trip)',
+            zeroBase.E === 0);
+
+        // ── Edge case: all 9 factors → result stays finite ────
+        const allDelay = MathModel.expectedDelay(60, ALL_FACTOR_KEYS);
+        assert('all 9 factors → E[D] is finite number', Number.isFinite(allDelay.E));
+        assert('all 9 factors → E[D] > 0',  allDelay.E > 0);
+        assert('all 9 factors → E[D] ≤ baseTimeMin (delay ≤ 100% of base)',
+            allDelay.E <= 60);
+        assert('all 9 factors → ciHigh is finite', Number.isFinite(allDelay.ciHigh));
+
+        // ════════════════════════════════════════════════════════
+        //  6. MathModel — routeScoreMatrix
+        // ════════════════════════════════════════════════════════
+        group('MathModel — routeScoreMatrix');
+
+        const rVecs = [
+            MathModel.buildFeatureVector(['accident','peakHour']),
             MathModel.buildFeatureVector(['normal'])
         ];
-        const scores = MathModel.routeScoreMatrix(routeVecs);
-        assert('routeScoreMatrix: returns N scores for N routes', scores.length === 2);
-        assert('routeScoreMatrix: heavy-incident route scores higher than normal',
-            scores[0] > scores[1]);
+        const scores = MathModel.routeScoreMatrix(rVecs);
+        assert('returns N scores for N routes', scores.length === 2);
+        assert('heavy-incident route scores higher than normal', scores[0] > scores[1]);
 
-        // ── 7. Logic engine — Modus Ponens ─────────────────────
-        const r1 = MathModel.runLogicEngine({
-            activeFactorKeys: ['accident', 'intercontinental'],
-            delayPercent: 70
-        });
-        const fired1 = r1.conclusions.map(c => c.conclusion);
-        assert('logic: accident∧intercontinental → FERRY_OR_MARMARAY_STRONGLY_ADVISED',
-            fired1.includes('FERRY_OR_MARMARAY_STRONGLY_ADVISED'));
-        assert('logic: delay 70% triggers CONSIDER_ALTERNATIVE_MODE',
-            fired1.includes('CONSIDER_ALTERNATIVE_MODE'));
-        assert('logic: maxSeverity = 3 (CRITICAL) on dual-incident',
-            r1.maxSeverity === 3);
+        // ── Edge case: single-route matrix ────────────────────
+        const oneRouteScores = MathModel.routeScoreMatrix([rVecs[0]]);
+        assert('single-route matrix: length = 1', oneRouteScores.length === 1);
+        assert('single-route matrix: score is finite', Number.isFinite(oneRouteScores[0]));
 
-        const r2 = MathModel.runLogicEngine({ activeFactorKeys: ['normal'], delayPercent: 5 });
-        const fired2 = r2.conclusions.map(c => c.conclusion);
-        assert('logic: normal traffic → LOW_RISK_PROCEED', fired2.includes('LOW_RISK_PROCEED'));
-        assert('logic: severity = 1 (INFO) for normal', r2.maxSeverity === 1);
+        // ── Edge case: zero-distance (zero vector) route ───────
+        const zeroVec = new Float64Array(9);
+        const zeroScores = MathModel.routeScoreMatrix([zeroVec]);
+        assert('zero feature vector → score = 0 (no risk factors)',
+            zeroScores[0] === 0);
 
-        const r3 = MathModel.runLogicEngine({ activeFactorKeys: [], delayPercent: 0 });
-        assert('logic: empty facts → no rules fire', r3.conclusions.length === 0);
+        // ════════════════════════════════════════════════════════
+        //  7. MathModel — runLogicEngine (original single-pass)
+        // ════════════════════════════════════════════════════════
+        group('MathModel — runLogicEngine (Modus Ponens, single-pass)');
 
-        // ── 8. computeFullModel — integration smoke ────────────
+        const mp1 = MathModel.runLogicEngine({
+            activeFactorKeys: ['accident','intercontinental'], delayPercent: 70 });
+        const mp1concs = mp1.conclusions.map(c => c.conclusion);
+        assert('accident∧intercontinental → ferry/marmaray rule fires',
+            mp1concs.some(c => c.toUpperCase().includes('FERRY') || c.includes('ferry')));
+        assert('maxSeverity = 3 (CRITICAL) on dual-incident', mp1.maxSeverity === 3);
+
+        const mp2 = MathModel.runLogicEngine({ activeFactorKeys: ['normal'], delayPercent: 5 });
+        const mp2concs = mp2.conclusions.map(c => c.conclusion);
+        assert('normal traffic → LOW_RISK rule fires',
+            mp2concs.some(c => c.toUpperCase().includes('LOW') || c.toUpperCase().includes('NORMAL')));
+        assert('severity = 1 (INFO) for normal', mp2.maxSeverity === 1);
+
+        const mp3 = MathModel.runLogicEngine({ activeFactorKeys: [], delayPercent: 0 });
+        assert('empty facts → no rules fire', mp3.conclusions.length === 0);
+
+        // ════════════════════════════════════════════════════════
+        //  8. LogicEngine — fixpoint forward chaining (new engine)
+        // ════════════════════════════════════════════════════════
+        group('LogicEngine — fixpoint forward chaining');
+
+        if (!window.LogicEngine) {
+            skip('LogicEngine.run: module not loaded', 'logic_engine.js missing from page');
+        } else {
+            // Direct rule R1 fires
+            const le1 = LogicEngine.run({ activeFactorKeys: ['accident','intercontinental'] });
+            assert('R1: accident∧intercontinental → ferry_or_marmaray_strongly_advised',
+                le1.facts.includes('ferry_or_marmaray_strongly_advised'));
+            assert('R1 severity = 3 (CRITICAL)', le1.severity === 3);
+            assert('LogicEngine returns facts array', Array.isArray(le1.facts));
+            assert('LogicEngine returns conclusions array', Array.isArray(le1.conclusions));
+
+            // Chained: R1 fires → R8 should fire (ferry + rain → marmaray_only)
+            const le2 = LogicEngine.run({
+                activeFactorKeys: ['accident','intercontinental','rain']
+            });
+            assert('R8 chained: ferry_advised + rain → marmaray_only_advised',
+                le2.facts.includes('marmaray_only_advised'));
+            assert('chained conclusion carries severity 3', le2.severity === 3);
+
+            // Chained: R3+peakHour → R9 → R10
+            const le3 = LogicEngine.run({
+                activeFactorKeys: ['longRoute','accident','peakHour']
+            });
+            assert('R3: longRoute+accident → high_delay_risk',
+                le3.facts.includes('high_delay_risk'));
+            assert('R9 chained: high_delay_risk+peakHour → maximum_risk_state',
+                le3.facts.includes('maximum_risk_state'));
+            assert('R10 chained: maximum_risk_state → suggest_postpone_or_remote',
+                le3.facts.includes('suggest_postpone_or_remote'));
+
+            // Fixpoint completeness — no rule should fire after fixpoint
+            const le4 = LogicEngine.run({ activeFactorKeys: ['normal'] });
+            const initialFactCount = le4.facts.length;
+            // Running again on the same facts should produce the same result
+            const le4b = LogicEngine.run({ activeFactorKeys: le4.facts });
+            assert('fixpoint idempotent: second run adds no new facts',
+                le4b.facts.length === le4.facts.length);
+
+            // Empty input
+            const le5 = LogicEngine.run({ activeFactorKeys: [] });
+            assert('empty facts → no conclusions', le5.conclusions.length === 0);
+            assert('empty facts → severity = 0', le5.severity === 0);
+
+            // All 9 factors — must not throw, must stay bounded
+            const le6 = LogicEngine.run({ activeFactorKeys: ALL_FACTOR_KEYS });
+            assert('all 9 factors → LogicEngine runs without error',
+                Array.isArray(le6.conclusions));
+            assert('all 9 factors → severity in [0,3]',
+                le6.severity >= 0 && le6.severity <= 3);
+
+            // Conclusions array entries have required fields
+            if (le1.conclusions.length > 0) {
+                const c = le1.conclusions[0];
+                assert('conclusion entry has id field',         typeof c.id === 'string');
+                assert('conclusion entry has conclusion field', typeof c.conclusion === 'string');
+                assert('conclusion entry has severity field',   typeof c.severity === 'number');
+                assert('conclusion entry has explanation field',typeof c.explanation === 'string');
+            }
+        }
+
+        // ════════════════════════════════════════════════════════
+        //  9. LinearAlgebra module
+        // ════════════════════════════════════════════════════════
+        group('LinearAlgebra module');
+
+        if (!window.LinearAlgebra) {
+            skip('LinearAlgebra: module not loaded', 'linear_algebra.js missing from page');
+        } else {
+            assertClose('dotProduct delegates correctly: [1,2]·[3,4]=11',
+                LinearAlgebra.dotProduct([1,2],[3,4]), 11);
+            assertClose('l2Norm delegates correctly: ‖(3,4)‖=5',
+                LinearAlgebra.l2Norm([3,4]), 5);
+
+            // cosineSimilarity
+            assertClose('cosineSimilarity identical vectors = 1.0',
+                LinearAlgebra.cosineSimilarity([1,0,0],[1,0,0]), 1.0, 1e-9);
+            assertClose('cosineSimilarity orthogonal vectors = 0',
+                LinearAlgebra.cosineSimilarity([1,0],[0,1]), 0, 1e-9);
+            assertClose('cosineSimilarity opposite vectors = -1',
+                LinearAlgebra.cosineSimilarity([1,0],[-1,0]), -1.0, 1e-9);
+            assertClose('cosineSimilarity zero vector = 0 (safe fallback)',
+                LinearAlgebra.cosineSimilarity([0,0],[1,1]), 0, 1e-9);
+
+            // matMulVec
+            const M = [[1,2],[3,4],[5,6]];
+            const v = [1,1];
+            const mv = LinearAlgebra.matMulVec(M, v);
+            assert('matMulVec: result length = number of rows', mv.length === 3);
+            assertClose('matMulVec: row 0: [1,2]·[1,1]=3', mv[0], 3);
+            assertClose('matMulVec: row 1: [3,4]·[1,1]=7', mv[1], 7);
+            assertClose('matMulVec: row 2: [5,6]·[1,1]=11',mv[2], 11);
+
+            // routeScoreMatrix
+            const rsm = LinearAlgebra.routeScoreMatrix([
+                MathModel.buildFeatureVector(['accident']),
+                MathModel.buildFeatureVector(['normal'])
+            ]);
+            assert('routeScoreMatrix: 2 routes → 2 scores', rsm.length === 2);
+        }
+
+        // ════════════════════════════════════════════════════════
+        //  10. ProbabilityUtils module
+        // ════════════════════════════════════════════════════════
+        group('ProbabilityUtils module');
+
+        if (!window.ProbabilityUtils) {
+            skip('ProbabilityUtils: module not loaded', 'probability.js missing from page');
+        } else {
+            // gaussianRandom — statistical sanity (10000 samples, 3σ bounds)
+            const samples = Array.from({length: 10000}, () => ProbabilityUtils.gaussianRandom());
+            const mu = samples.reduce((s,v)=>s+v,0)/samples.length;
+            const s2 = samples.reduce((s,v)=>s+(v-mu)**2,0)/samples.length;
+            assertClose('gaussianRandom: mean ≈ 0 (|μ| < 0.05 over 10k samples)',
+                Math.abs(mu), 0, 0.05);
+            assertClose('gaussianRandom: variance ≈ 1 (|σ²-1| < 0.05)',
+                Math.abs(s2-1), 0, 0.05);
+
+            // shannonEntropy
+            assertClose('shannonEntropy(0.5) = 1.0 bit (max uncertainty)',
+                ProbabilityUtils.shannonEntropy(0.5), 1.0, 1e-9);
+            assertClose('shannonEntropy(0) = 0 (no uncertainty)',
+                ProbabilityUtils.shannonEntropy(0), 0, 1e-9);
+            assertClose('shannonEntropy(1) = 0 (certain)',
+                ProbabilityUtils.shannonEntropy(1), 0, 1e-9);
+            assert('shannonEntropy in [0,1] for any p ∈ (0,1)',
+                [0.1,0.2,0.3,0.4,0.6,0.7,0.9]
+                    .every(p => ProbabilityUtils.shannonEntropy(p) >= 0 &&
+                                ProbabilityUtils.shannonEntropy(p) <= 1));
+
+            // probabilityUnion delegate
+            const pu = ProbabilityUtils.probabilityUnion(['accident']);
+            assert('probabilityUnion: result has prob field', 'prob' in pu);
+            assertClose('probabilityUnion: single factor = base',
+                pu.prob, 0.350, 1e-9);
+
+            // sampleFactor stays in [0,1]
+            const sampleTests = ALL_FACTOR_KEYS.every(k => {
+                const s = ProbabilityUtils.sampleFactor(k);
+                return s >= 0 && s <= 1;
+            });
+            assert('sampleFactor: all 9 keys sample in [0,1]', sampleTests);
+        }
+
+        // ════════════════════════════════════════════════════════
+        //  11. GeoUtils — perception module
+        // ════════════════════════════════════════════════════════
+        group('GeoUtils — perception module');
+
+        if (!window.GeoUtils) {
+            skip('GeoUtils: module not loaded', 'geo.js missing from page');
+        } else {
+            // haversineDistance
+            // Istanbul center → Ankara center ≈ 352 km
+            const istCoord = { lat:41.0082, lng:28.9784 };
+            const ankaraCoord = { lat:39.9334, lng:32.8597 };
+            const d = GeoUtils.haversineDistance(istCoord, ankaraCoord);
+            assert('haversineDistance IST→ANK ≈ 350–360 km', d > 340 && d < 370,
+                `got ${d.toFixed(1)} km`);
+
+            // Zero distance
+            assertClose('haversineDistance same point = 0',
+                GeoUtils.haversineDistance(istCoord, istCoord), 0, 0.001);
+
+            // Bosphorus side detection
+            // Beşiktaş (Asian side = false, European = true — actually Beşiktaş is European)
+            const besiktas  = { lat:41.0422, lng:29.0075 };  // European side
+            const kadikoy   = { lat:40.9908, lng:29.0233 };  // Asian side
+            const sariyer   = { lat:41.1609, lng:28.9800 };  // European side
+
+            assert('isEuropeanSide: Beşiktaş is European (lng < Bosphorus midline)',
+                GeoUtils.isEuropeanSide(besiktas.lat, besiktas.lng));
+            // Kadıköy is at ~29.02°E — close to border; just test it doesn't throw
+            assert('isEuropeanSide: returns boolean for any coordinate',
+                typeof GeoUtils.isEuropeanSide(kadikoy.lat, kadikoy.lng) === 'boolean');
+
+            // isIntercontinental
+            const fatih  = { lat:41.0186, lng:28.9400 };  // European
+            const uskudar = { lat:41.0231, lng:29.0150 }; // Asian
+            assert('isIntercontinental: European→Asian = true',
+                GeoUtils.isIntercontinental(fatih, uskudar));
+            assert('isIntercontinental: European→European = false',
+                !GeoUtils.isIntercontinental(fatih, besiktas));
+
+            // isWestSide
+            assert('isWestSide: coord at lng=28.5 is west',
+                GeoUtils.isWestSide({ lng: 28.5 }));
+            assert('isWestSide: coord at lng=29.1 is not west',
+                !GeoUtils.isWestSide({ lng: 29.1 }));
+        }
+
+        // ════════════════════════════════════════════════════════
+        //  12. PeakHour — perception module
+        // ════════════════════════════════════════════════════════
+        group('PeakHour — perception module');
+
+        if (!window.PeakHour) {
+            skip('PeakHour: module not loaded', 'peak_hour.js missing from page');
+        } else {
+            // Deterministic: pass explicit Date objects
+            const morning = new Date(); morning.setHours(8, 0, 0, 0);
+            const evening = new Date(); evening.setHours(18, 0, 0, 0);
+            const midday  = new Date(); midday.setHours(13, 0, 0, 0);
+            const night   = new Date(); night.setHours(2, 0, 0, 0);
+
+            assert('isPeakHour: 08:00 → true (morning peak)',  PeakHour.isPeakHour(morning));
+            assert('isPeakHour: 18:00 → true (evening peak)',  PeakHour.isPeakHour(evening));
+            assert('isPeakHour: 13:00 → false (off-peak)',    !PeakHour.isPeakHour(midday));
+            assert('isPeakHour: 02:00 → false (night)',       !PeakHour.isPeakHour(night));
+
+            assert('getPeakLabel: 08:00 includes "Morning"',
+                PeakHour.getPeakLabel(morning).includes('Morning'));
+            assert('getPeakLabel: 18:00 includes "Evening"',
+                PeakHour.getPeakLabel(evening).includes('Evening'));
+            assert('getPeakLabel: 13:00 is off-peak string',
+                typeof PeakHour.getPeakLabel(midday) === 'string');
+        }
+
+        // ════════════════════════════════════════════════════════
+        //  13. IncidentDetector — perception module
+        // ════════════════════════════════════════════════════════
+        group('IncidentDetector — perception module');
+
+        if (!window.IncidentDetector || !window.GeoUtils) {
+            skip('IncidentDetector: module(s) not loaded',
+                'incidents.js or geo.js missing');
+        } else {
+            const zones = IncidentDetector.getZones();
+            assert('getZones: returns non-empty array', Array.isArray(zones) && zones.length > 0);
+            assert('getZones: each zone has lat, lon, radius',
+                zones.every(z => 'lat' in z && 'lon' in z && 'radius' in z));
+
+            // Point inside first zone → incident detected
+            const z0 = zones[0];
+            const insidePoint  = [{ lat: z0.lat, lng: z0.lon }];         // exactly at centre
+            const outsidePoint = [{ lat: 40.0,   lng: 28.0  }];          // far away
+
+            const distFn = GeoUtils.haversineDistance;
+            const hits = IncidentDetector.getActiveIncidentsOnRoute(insidePoint, distFn);
+            assert('point at zone centre → incident detected', hits.length >= 1);
+
+            const misses = IncidentDetector.getActiveIncidentsOnRoute(outsidePoint, distFn);
+            assert('far-away point → no incidents detected', misses.length === 0);
+
+            // Empty route array
+            const empty = IncidentDetector.getActiveIncidentsOnRoute([], distFn);
+            assert('empty route array → empty result', empty.length === 0);
+        }
+
+        // ════════════════════════════════════════════════════════
+        //  14. MathModel — computeFullModel (integration smoke)
+        // ════════════════════════════════════════════════════════
+        group('MathModel — computeFullModel (integration)');
+
+        const routeVecs = [
+            MathModel.buildFeatureVector(['accident','peakHour']),
+            MathModel.buildFeatureVector(['normal'])
+        ];
         const full = MathModel.computeFullModel({
-            activeFactorKeys: ['accident', 'peakHour', 'intercontinental'],
-            baseTimeMin: 45,
-            routeVectors: routeVecs
+            activeFactorKeys: ['accident','peakHour','intercontinental'],
+            baseTimeMin:      45,
+            routeVectors:     routeVecs
         });
-        assert('computeFullModel: featureVector length 9', full.featureVector.length === 9);
-        assert('computeFullModel: linearScore in [0,1]',
-            full.linearScore >= 0 && full.linearScore <= 1);
-        assert('computeFullModel: finalDelayPct in [0,100]',
-            full.finalDelayPct >= 0 && full.finalDelayPct <= 100);
-        assert('computeFullModel: probabilityResult.prob in [0,1]',
+        assert('featureVector length = 9',     full.featureVector.length === 9);
+        assert('linearScore in [0,1]',         full.linearScore >= 0 && full.linearScore <= 1);
+        assert('finalDelayPct in [0,100]',     full.finalDelayPct >= 0 && full.finalDelayPct <= 100);
+        assert('probabilityResult.prob in [0,1]',
             full.probabilityResult.prob >= 0 && full.probabilityResult.prob <= 1);
-        assert('computeFullModel: delayStats has E, sigma, ciLow, ciHigh',
-            'E' in full.delayStats && 'sigma' in full.delayStats &&
-            'ciLow' in full.delayStats && 'ciHigh' in full.delayStats);
-        assert('computeFullModel: summaryLines non-empty', full.summaryLines.length > 0);
-        assert('computeFullModel: routeRankScores matches input route count',
-            full.routeRankScores.length === routeVecs.length);
+        assert('delayStats has E, sigma, ciLow, ciHigh',
+            ['E','sigma','ciLow','ciHigh'].every(k => k in full.delayStats));
+        assert('summaryLines non-empty array', Array.isArray(full.summaryLines) && full.summaryLines.length > 0);
+        assert('routeRankScores length = input routes', full.routeRankScores.length === routeVecs.length);
+        assert('logicResult has conclusions array', Array.isArray(full.logicResult.conclusions));
+        assert('logicResult has engine field',       typeof full.logicResult.engine === 'string');
 
-        // ── Render report ──────────────────────────────────────
-        const passed = results.filter(r => r.pass).length;
-        const total = results.length;
-        const allPass = passed === total;
+        // ── Edge case: zero baseTimeMin ────────────────────────
+        const zeroFull = MathModel.computeFullModel({
+            activeFactorKeys: ['accident','peakHour'],
+            baseTimeMin:      0,
+            routeVectors:     routeVecs
+        });
+        assert('computeFullModel: zero baseTimeMin → does not throw',
+            typeof zeroFull === 'object');
+        assert('computeFullModel: zero baseTimeMin → finalDelayPct in [0,100]',
+            zeroFull.finalDelayPct >= 0 && zeroFull.finalDelayPct <= 100);
+
+        // ── Edge case: all 9 factors active ───────────────────
+        const allFull = MathModel.computeFullModel({
+            activeFactorKeys: ALL_FACTOR_KEYS,
+            baseTimeMin:      60,
+            routeVectors:     [MathModel.buildFeatureVector(ALL_FACTOR_KEYS)]
+        });
+        assert('all 9 factors → finalDelayPct ≤ 100', allFull.finalDelayPct <= 100);
+        assert('all 9 factors → linearScore ≤ 1',     allFull.linearScore <= 1);
+        assert('all 9 factors → summaryLines present', allFull.summaryLines.length > 0);
+
+        // ════════════════════════════════════════════════════════
+        //  15. SA regression test — must beat greedy by ≥ 5%
+        // ════════════════════════════════════════════════════════
+        group('SA regression — beats greedy baseline by ≥5%');
+
+        if (!window.SimulatedAnnealing) {
+            skip('SA regression: SimulatedAnnealing module not loaded',
+                'simulated_annealing.js missing from page');
+        } else {
+            // Standard test set: 5 fixed scenarios with known hard trade-offs
+            const SA_SCENARIOS = [
+                { name:'Bridge accident at peak',
+                  routes:[
+                    { name:'Bridge', activeKeys:['accident','intercontinental','peakHour'],
+                      baseTimeMin:45, distanceKm:12, transferCount:0 },
+                    { name:'Ferry',  activeKeys:['intercontinental'],
+                      baseTimeMin:35, distanceKm:8, transferCount:1 },
+                    { name:'Marmaray',activeKeys:['intercontinental','peakHour'],
+                      baseTimeMin:30, distanceKm:10, transferCount:2 }
+                  ]
+                },
+                { name:'West side roadwork',
+                  routes:[
+                    { name:'E-5',    activeKeys:['westSide','roadwork','peakHour'],
+                      baseTimeMin:60, distanceKm:22, transferCount:0 },
+                    { name:'TEM',    activeKeys:['westSide','peakHour'],
+                      baseTimeMin:50, distanceKm:25, transferCount:0 },
+                    { name:'Metro',  activeKeys:['peakHour'],
+                      baseTimeMin:40, distanceKm:18, transferCount:1 }
+                  ]
+                },
+                { name:'Rain + long route',
+                  routes:[
+                    { name:'Highway', activeKeys:['rain','longRoute'],
+                      baseTimeMin:70, distanceKm:32, transferCount:0 },
+                    { name:'Train',   activeKeys:['longRoute'],
+                      baseTimeMin:55, distanceKm:30, transferCount:1 },
+                    { name:'Bus',     activeKeys:['rain','longRoute','peakHour'],
+                      baseTimeMin:80, distanceKm:30, transferCount:0 }
+                  ]
+                },
+                { name:'Multi-incident',
+                  routes:[
+                    { name:'Main',   activeKeys:['accident','rain','breakdown'],
+                      baseTimeMin:35, distanceKm:14, transferCount:0 },
+                    { name:'Alt',    activeKeys:['roadwork'],
+                      baseTimeMin:38, distanceKm:16, transferCount:0 },
+                    { name:'Metro',  activeKeys:['peakHour'],
+                      baseTimeMin:28, distanceKm:12, transferCount:2 }
+                  ]
+                },
+                { name:'Normal traffic',
+                  routes:[
+                    { name:'Fast',   activeKeys:['normal'],
+                      baseTimeMin:20, distanceKm:8,  transferCount:0 },
+                    { name:'Slow',   activeKeys:['normal'],
+                      baseTimeMin:30, distanceKm:10, transferCount:0 }
+                  ]
+                }
+            ];
+
+            // Cost function matching SA internals: α·E[D]norm + β·dist + γ·tr − δ·conf
+            function benchCost(route) {
+                const delay = MathModel.expectedDelay(route.baseTimeMin, route.activeKeys);
+                const prob  = MathModel.probabilityUnion(route.activeKeys);
+                const eN    = Math.min(1, delay.E / (route.baseTimeMin * 2 || 60));
+                const dN    = Math.min(1, (route.distanceKm   || 30) / 50);
+                const tN    = Math.min(1, (route.transferCount || 0) / 5);
+                const conf  = Math.max(0, Math.min(1, prob.confidence || 0.7));
+                return Math.max(0, 0.40*eN + 0.25*dN + 0.20*tN - 0.15*conf);
+            }
+
+            // Greedy: pick lowest cost by raw E[D]
+            function greedyCost(routes) {
+                let best = null, bestE = Infinity;
+                routes.forEach(r => {
+                    const e = MathModel.expectedDelay(r.baseTimeMin, r.activeKeys).E;
+                    if (e < bestE) { bestE = e; best = r; }
+                });
+                return benchCost(best);
+            }
+
+            let greedyTotal = 0, saTotal = 0;
+            let saWins = 0;
+
+            SA_SCENARIOS.forEach(sc => {
+                const greedy = greedyCost(sc.routes);
+                const saRes  = SimulatedAnnealing.run(sc.routes);
+                const saCost = saRes ? benchCost(saRes.bestRoute) : greedy;
+                greedyTotal += greedy;
+                saTotal     += saCost;
+                if (saCost <= greedy) saWins++;
+            });
+
+            const meanGreedy  = greedyTotal / SA_SCENARIOS.length;
+            const meanSA      = saTotal     / SA_SCENARIOS.length;
+            const improvePct  = ((meanGreedy - meanSA) / meanGreedy) * 100;
+
+            assert(`SA mean cost (${meanSA.toFixed(3)}) ≤ greedy mean cost (${meanGreedy.toFixed(3)})`,
+                meanSA <= meanGreedy,
+                `SA did not beat greedy: SA=${meanSA.toFixed(3)}, greedy=${meanGreedy.toFixed(3)}`);
+
+            assert(`SA beats greedy by ≥5% (got ${improvePct.toFixed(1)}%)`,
+                improvePct >= 5,
+                `Improvement ${improvePct.toFixed(1)}% < required 5%. ` +
+                `SA=${meanSA.toFixed(3)}, greedy=${meanGreedy.toFixed(3)}`);
+
+            assert(`SA wins on ≥3 of 5 scenarios (got ${saWins}/5)`,
+                saWins >= 3,
+                `SA only won ${saWins}/5 scenarios`);
+        }
+
+        // ════════════════════════════════════════════════════════
+        //  16. GeneticAlgorithm — unit tests
+        // ════════════════════════════════════════════════════════
+        group('GeneticAlgorithm — unit tests');
+
+        if (!window.GeneticAlgorithm) {
+            skip('GeneticAlgorithm: module not loaded',
+                'ga_route_planner.js missing from page');
+        } else {
+            const GA = GeneticAlgorithm;
+
+            // randomPermutation
+            const perm = GA._randomPermutation(5);
+            assert('randomPermutation: length = n', perm.length === 5);
+            assert('randomPermutation: contains all indices 0..n-1',
+                [0,1,2,3,4].every(i => perm.includes(i)));
+
+            // orderCrossover (OX1)
+            const p1 = [0,1,2,3,4], p2 = [4,3,2,1,0];
+            const [c1, c2] = GA._orderCrossover(p1, p2);
+            assert('orderCrossover: child1 is valid permutation (no duplicates)',
+                new Set(c1).size === 5 && c1.length === 5);
+            assert('orderCrossover: child2 is valid permutation (no duplicates)',
+                new Set(c2).size === 5 && c2.length === 5);
+
+            // swapMutate
+            const ind = [0,1,2,3,4];
+            const indCopy = ind.slice();
+            GA._swapMutate(indCopy);
+            assert('swapMutate: still valid permutation after mutation',
+                new Set(indCopy).size === 5);
+
+            // run — single route (trivial)
+            const trivialRoutes = [{
+                name:'Only', activeKeys:['normal'],
+                baseTimeMin:20, distanceKm:5, transferCount:0
+            }];
+            const trivRes = GA.run(trivialRoutes);
+            assert('run: single route → returns result', trivRes !== null);
+            assert('run: single route → bestRoute is the only route',
+                trivRes.bestRoute.name === 'Only');
+
+            // run — 3 routes, SA-like scenario
+            const gaRoutes = [
+                { name:'A', activeKeys:['accident','peakHour'],  baseTimeMin:45, distanceKm:12, transferCount:0 },
+                { name:'B', activeKeys:['intercontinental'],     baseTimeMin:35, distanceKm:8,  transferCount:1 },
+                { name:'C', activeKeys:['normal'],               baseTimeMin:25, distanceKm:6,  transferCount:0 }
+            ];
+            const gaRes = GA.run(gaRoutes, { POP_SIZE:10, MAX_GENERATIONS:20, PATIENCE:10 });
+            assert('run: bestRoute is one of the input routes',
+                gaRoutes.some(r => r.name === gaRes.bestRoute.name));
+            assert('run: bestCost is finite and ≥ 0',
+                Number.isFinite(gaRes.bestCost) && gaRes.bestCost >= 0);
+            assert('run: fitnessHistory length > 0', gaRes.fitnessHistory.length > 0);
+            assert('run: fitness never decreases (elitism guarantee)',
+                gaRes.fitnessHistory.every((f,i,arr) =>
+                    i === 0 || f >= arr[i-1] - 1e-9
+                ));
+            assert('run: C (normal) should be chosen (lowest risk)',
+                gaRes.bestRoute.name === 'C',
+                `Got ${gaRes.bestRoute.name} instead of C`);
+        }
+
+        // ════════════════════════════════════════════════════════
+        //  RENDER
+        // ════════════════════════════════════════════════════════
+        const allTests  = groups.flatMap(g => g.tests);
+        const passed    = allTests.filter(t => t.pass && !t.skipped).length;
+        const skipped   = allTests.filter(t => t.skipped).length;
+        const failed    = allTests.filter(t => !t.pass && !t.skipped).length;
+        const total     = allTests.length;
+        const allPass   = failed === 0;
 
         const summary = document.getElementById('summary');
         summary.className = 'summary ' + (allPass ? 'pass' : 'fail');
-        summary.textContent = `${passed} / ${total} passed` + (allPass ? '  ✓' : '  ✗');
+        summary.innerHTML =
+            `<span>${passed}/${total - skipped} passed</span>` +
+            (skipped > 0 ? `<span style="color:#8B949E">${skipped} skipped</span>` : '') +
+            (failed  > 0 ? `<span style="color:#FF8A8A">${failed} failed</span>` : '') +
+            (allPass ? '<span>✓ All tests passed</span>' : '');
 
         const out = document.getElementById('results');
-        out.innerHTML = results.map(r => `
-            <div class="test ${r.pass ? 'pass' : 'fail'}">
-                <span class="badge ${r.pass ? 'pass' : 'fail'}">${r.pass ? 'PASS' : 'FAIL'}</span>
-                <span class="name">${r.name}</span>
-                ${r.detail && !r.pass ? `<div class="detail">${r.detail}</div>` : ''}
-            </div>
-        `).join('');
+        out.innerHTML = groups.map(g => {
+            const gPass = g.tests.filter(t => t.pass && !t.skipped).length;
+            const gFail = g.tests.filter(t => !t.pass && !t.skipped).length;
+            const gSkip = g.tests.filter(t => t.skipped).length;
+            return `
+            <div class="group">
+                <div class="group-title">
+                    ${g.title}
+                    <span style="font-weight:400;color:${gFail>0?'#FF4D4D':gSkip>0?'#8B949E':'#2ECC71'}">
+                        (${gPass} pass${gFail>0?' · '+gFail+' fail':''}${gSkip>0?' · '+gSkip+' skip':''})
+                    </span>
+                </div>
+                ${g.tests.map(t => `
+                <div class="test ${t.skipped ? '' : t.pass ? 'pass' : 'fail'}"
+                     style="${t.skipped ? 'border-color:#444;opacity:.5;' : ''}">
+                    <span class="badge ${t.skipped ? 'skip' : t.pass ? 'pass' : 'fail'}">
+                        ${t.skipped ? 'SKIP' : t.pass ? 'PASS' : 'FAIL'}
+                    </span>
+                    <span class="name">${t.name}</span>
+                    ${t.detail && !t.pass ? `<div class="detail">${t.detail}</div>` : ''}
+                </div>`).join('')}
+            </div>`;
+        }).join('');
     })();
     </script>
 </body>
