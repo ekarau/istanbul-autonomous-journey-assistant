@@ -53,6 +53,7 @@ The system implements a **four-layer rational agent loop**:
 | `src/optimization/baseline_greedy.js` | `window.GreedyBaseline` | Greedy shortest-time baseline |
 | `src/optimization/optimizer.js` | `window.Optimizer` | Hill Climbing + RMSE evaluation |
 | `src/optimization/simulated_annealing.js` | `window.SimulatedAnnealing` | SA with Metropolis criterion, geometric cooling |
+| `src/optimization/ga_route_planner.js` | `window.GeneticAlgorithm` | Genetic algorithm: tournament selection, OX1 crossover, elitism |
 
 ### Layer 4 — Monitoring / Action
 | File | Window API | Responsibility |

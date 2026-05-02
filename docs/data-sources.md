@@ -7,7 +7,7 @@
 
 ## Overview
 
-The probabilistic delay model embedded in `src/app.js` uses real Istanbul traffic data to determine delay probabilities and confidence scores for each route. All `DELAY_FACTORS` coefficients were derived from the datasets listed below. No values were arbitrarily assigned — each has a documented calculation method.
+The probabilistic delay model — `DELAY_FACTORS` in `src/data/delay_factors.js`, consumed by `src/math/math_model.js` and `src/decision/agent.js` — uses real Istanbul traffic data to determine delay probabilities and confidence scores for each route. All coefficients were derived from the datasets listed below. No values were arbitrarily assigned; each has a documented calculation method.
 
 ---
 
@@ -87,7 +87,7 @@ This represents the irreducible baseline delay present even under optimal condit
 
 ## Derived Coefficients
 
-All values stored in `DELAY_FACTORS` inside `src/app.js`:
+All values stored in `DELAY_FACTORS` inside `src/data/delay_factors.js`:
 
 | Factor | Base | Variance | Derivation |
 |---|---|---|---|
