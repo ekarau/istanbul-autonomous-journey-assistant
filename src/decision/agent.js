@@ -257,7 +257,7 @@ document.addEventListener('DOMContentLoaded', async function () {
 
         for (let i = 0; i < text.length; i++) {
             el.innerHTML += text.charAt(i);
-            await new Promise(r => setTimeout(r, 18));
+            await new Promise(r => setTimeout(r, 3));
         }
     };
 
@@ -620,7 +620,7 @@ document.addEventListener('DOMContentLoaded', async function () {
 
         document.getElementById("ai-status").innerHTML = "Analyzing route with backend AI...";
 
-        await new Promise(resolve => setTimeout(resolve, 700));
+        await new Promise(resolve => setTimeout(resolve, 100));
 
         try {
             const res = await fetch(`${API_BASE}/api/analyze`, {
